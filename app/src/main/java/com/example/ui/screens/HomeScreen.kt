@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +23,8 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -30,6 +33,15 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.ui.window.DialogProperties
+import com.example.audio.AVAILABLE_RECITERS
+import com.example.audio.AudioPlayerManager
+import com.example.audio.AyahAudioState
+import com.example.audio.Reciter
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import com.example.data.local.BookmarkManager
@@ -47,6 +59,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -79,7 +93,13 @@ fun HomeScreen(
     onSurahSelected: (Int) -> Unit,
     onAyahSelected: (Int, Int) -> Unit = { _, _ -> }
 ) {
+    fun Int.toArabicNumerals(): String {
+        val arabicNumerals = arrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
+        return this.toString().map { if (it.isDigit()) arabicNumerals[it - '0'] else it }.joinToString("")
+    }
+
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val surahs by viewModel.surahs.collectAsStateWithLifecycle()
     val syncProgress by viewModel.syncProgress.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
@@ -101,6 +121,39 @@ fun HomeScreen(
     var showDownloadDialog by remember { mutableStateOf(false) }
     var showBookmarksSheet by remember { mutableStateOf(false) }
     var bookmarks by remember { mutableStateOf(emptyList<QuranBookmark>()) }
+
+    var showPosterDialog by remember { mutableStateOf(false) }
+    var showReciterDialog by remember { mutableStateOf(false) }
+    var posterAyah by remember { mutableStateOf<AyahEntity?>(null) }
+    var posterSurahName by remember { mutableStateOf("") }
+
+    val audioManager = remember { AyahAudioState.manager }
+    val isPlayingAudio by (audioManager?.isPlaying?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(false) })
+    val currentPlayingAyah by (audioManager?.currentPlayingAyah?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(null) })
+    val currentReciter by (audioManager?.currentReciter?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(AVAILABLE_RECITERS.first()) })
+
+    // If user opens reciter dialog, pause loop
+    LaunchedEffect(showReciterDialog) {
+        if (showReciterDialog) {
+            viewModel.pauseRandomAyahLoop()
+        }
+    }
+
+    // Keep loop paused while audio is playing, and resume when it stops (if reciter dialog isn't open)
+    LaunchedEffect(isPlayingAudio) {
+        if (isPlayingAudio) {
+            viewModel.pauseRandomAyahLoop()
+        } else if (!showReciterDialog) {
+            viewModel.resumeRandomAyahLoop()
+        }
+    }
+
+    LaunchedEffect(currentPlayingAyah, isPlayingAudio) {
+        if (isPlayingAudio && currentPlayingAyah != null) {
+            val (surahId, ayahNumber) = currentPlayingAyah!!
+            viewModel.updateRandomAyahTo(surahId, ayahNumber)
+        }
+    }
     
     androidx.compose.runtime.LaunchedEffect(showBookmarksSheet) {
         if (showBookmarksSheet) {
@@ -283,6 +336,81 @@ fun HomeScreen(
             }
         }
     }
+    if (showPosterDialog && posterAyah != null) {
+        AyahPosterDialog(
+            ayah = posterAyah!!,
+            surahName = posterSurahName,
+            onDismiss = { showPosterDialog = false }
+        )
+    }
+
+    if (showReciterDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showReciterDialog = false 
+                if (!isPlayingAudio) {
+                    viewModel.resumeRandomAyahLoop()
+                }
+            },
+            modifier = Modifier
+                .widthIn(max = 300.dp)
+                .fillMaxWidth(0.85f),
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+            title = {
+                Text(
+                    text = "اختر القارئ",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 280.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    itemsIndexed(AVAILABLE_RECITERS, key = { _, reciter -> reciter.id }) { _, reciter ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    audioManager?.setReciter(reciter)
+                                    showReciterDialog = false
+                                    if (!isPlayingAudio) {
+                                        viewModel.resumeRandomAyahLoop()
+                                    }
+                                }
+                                .padding(vertical = 8.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = currentReciter.id == reciter.id,
+                                onClick = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = reciter.name,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (currentReciter.id == reciter.id) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { 
+                    showReciterDialog = false 
+                    if (!isPlayingAudio) {
+                        viewModel.resumeRandomAyahLoop()
+                    }
+                }) {
+                    Text("إغلاق")
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             Row(
@@ -434,16 +562,14 @@ fun HomeScreen(
                                     )
                                 }
 
-                                if (lastReadAyahText != null) {
-                                    Text(
-                                        text = lastReadAyahText!!,
+                                if (lastReadAyahText != null && lastRead != null) {
+                                    com.example.ui.components.AyahText(
+                                        textUthmani = lastReadAyahText!!,
+                                        ayahNumber = lastRead!!.ayahNumber,
                                         fontSize = 22.sp,
-                                        fontWeight = FontWeight.Normal,
-                                        fontFamily = FontFamily.Serif,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                                         textAlign = TextAlign.Center,
-                                        modifier = Modifier.padding(bottom = 12.dp),
-                                        lineHeight = 36.sp
+                                        modifier = Modifier.padding(bottom = 12.dp)
                                     )
                                 }
 
@@ -520,37 +646,143 @@ fun HomeScreen(
                                         },
                                         label = "ayah_animation"
                                     ) { targetAyah ->
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable {
-                                                    onAyahSelected(randomAyah!!.surahId, randomAyah!!.ayahNumber)
-                                                }
-                                                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            Text(
-                                                text = targetAyah!!.textUthmani,
-                                                fontSize = 22.sp,
-                                                fontWeight = FontWeight.Normal,
-                                                fontFamily = FontFamily.Serif,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                textAlign = TextAlign.Center,
-                                                modifier = Modifier.padding(bottom = 12.dp),
-                                                lineHeight = 36.sp
-                                            )
-                                            
-                                            Surface(
-                                                shape = RoundedCornerShape(12.dp),
-                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                        if (targetAyah != null) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
                                             ) {
-                                                Text(
-                                                    text = "سورة $randomSurahName • الآية ${targetAyah.ayahNumber}",
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                                Column(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .clickable {
+                                                            onAyahSelected(targetAyah.surahId, targetAyah.ayahNumber)
+                                                        },
+                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                                ) {
+                                                    com.example.ui.components.AyahText(
+                                                        textUthmani = targetAyah.textUthmani,
+                                                        ayahNumber = targetAyah.ayahNumber,
+                                                        fontSize = 22.sp,
+                                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                        textAlign = TextAlign.Center,
+                                                        modifier = Modifier.padding(bottom = 12.dp)
+                                                    )
+                                                    
+                                                    Surface(
+                                                        shape = RoundedCornerShape(12.dp),
+                                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                                    ) {
+                                                        Text(
+                                                            text = "سورة $randomSurahName • الآية ${targetAyah.ayahNumber}",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.primary,
+                                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                                        )
+                                                    }
+                                                }
+                                                
+                                                Spacer(modifier = Modifier.height(14.dp))
+                                                HorizontalDivider(
+                                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                                    thickness = 1.dp
                                                 )
+                                                Spacer(modifier = Modifier.height(8.dp))
+
+                                                val isThisAyahPlaying = isPlayingAudio && currentPlayingAyah?.first == targetAyah.surahId && currentPlayingAyah?.second == targetAyah.ayahNumber
+
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 4.dp),
+                                                    horizontalArrangement = Arrangement.SpaceEvenly,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    // زر مشاركة الآية كصورة
+                                                    TextButton(
+                                                        onClick = {
+                                                            posterAyah = targetAyah
+                                                            posterSurahName = randomSurahName
+                                                            showPosterDialog = true
+                                                        },
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Share,
+                                                            contentDescription = "مشاركة الآية كصورة",
+                                                            modifier = Modifier.size(17.dp),
+                                                            tint = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        Spacer(modifier = Modifier.width(5.dp))
+                                                        Text(
+                                                            text = "مشاركة كصورة",
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Medium,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                    }
+
+                                                    // زر استماع للآية
+                                                    TextButton(
+                                                        onClick = {
+                                                            if (isThisAyahPlaying) {
+                                                                audioManager?.stop()
+                                                                viewModel.resumeRandomAyahLoop()
+                                                            } else {
+                                                                viewModel.pauseRandomAyahLoop()
+                                                                audioManager?.playAyah(
+                                                                    surahId = targetAyah.surahId,
+                                                                    ayahNumber = targetAyah.ayahNumber,
+                                                                    continuous = false,
+                                                                    onCompletion = {
+                                                                        viewModel.playNextRandomAyah(audioManager)
+                                                                    }
+                                                                )
+                                                            }
+                                                        },
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = if (isThisAyahPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                                            contentDescription = if (isThisAyahPlaying) "إيقاف الاستماع" else "استماع للآية",
+                                                            modifier = Modifier.size(18.dp),
+                                                            tint = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        Spacer(modifier = Modifier.width(5.dp))
+                                                        Text(
+                                                            text = if (isThisAyahPlaying) "إيقاف" else "استماع للآية",
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Medium,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                    }
+
+                                                    // زر تغيير القارئ
+                                                    TextButton(
+                                                        onClick = {
+                                                            viewModel.pauseRandomAyahLoop()
+                                                            showReciterDialog = true
+                                                        },
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.RecordVoiceOver,
+                                                            contentDescription = "تغيير القارئ",
+                                                            modifier = Modifier.size(17.dp),
+                                                            tint = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        Spacer(modifier = Modifier.width(5.dp))
+                                                        Text(
+                                                            text = currentReciter.name.split(" ").firstOrNull() ?: "القارئ",
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Medium,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -610,7 +842,22 @@ fun HomeScreen(
                 }
 
                 items(surahs, key = { it.id }) { surah ->
-                    SurahItem(surah = surah, onClick = { onSurahSelected(surah.id) })
+                    SurahItem(
+                        surah = surah,
+                        onClick = { onSurahSelected(surah.id) },
+                        onExportPdfClick = {
+                            coroutineScope.launch {
+                                val ayahs = viewModel.getAyahsForSurah(surah.id)
+                                com.example.utils.PdfExporter.exportSurahToPdf(context, surah.nameAr, ayahs)
+                            }
+                        },
+                        onExportWordClick = {
+                            coroutineScope.launch {
+                                val ayahs = viewModel.getAyahsForSurah(surah.id)
+                                com.example.utils.WordExporter.exportSurahToWord(context, surah.nameAr, ayahs)
+                            }
+                        }
+                    )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
             } else {
@@ -653,7 +900,22 @@ fun HomeScreen(
                         )
                     }
                     items(matchingSurahs, key = { "match_surah_${it.id}" }) { surah ->
-                        SurahItem(surah = surah, onClick = { onSurahSelected(surah.id) })
+                        SurahItem(
+                            surah = surah,
+                            onClick = { onSurahSelected(surah.id) },
+                            onExportPdfClick = {
+                                coroutineScope.launch {
+                                    val ayahs = viewModel.getAyahsForSurah(surah.id)
+                                    com.example.utils.PdfExporter.exportSurahToPdf(context, surah.nameAr, ayahs)
+                                }
+                            },
+                            onExportWordClick = {
+                                coroutineScope.launch {
+                                    val ayahs = viewModel.getAyahsForSurah(surah.id)
+                                    com.example.utils.WordExporter.exportSurahToWord(context, surah.nameAr, ayahs)
+                                }
+                            }
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
@@ -752,7 +1014,12 @@ fun SearchAyahItem(
 }
 
 @Composable
-fun SurahItem(surah: SurahEntity, onClick: () -> Unit) {
+fun SurahItem(
+    surah: SurahEntity,
+    onClick: () -> Unit,
+    onExportPdfClick: () -> Unit,
+    onExportWordClick: () -> Unit
+) {
     fun Int.toArabicNumerals(): String {
         val arabicNumerals = arrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
         return this.toString().map { if (it.isDigit()) arabicNumerals[it - '0'] else it }.joinToString("")
@@ -807,6 +1074,30 @@ fun SurahItem(surah: SurahEntity, onClick: () -> Unit) {
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                IconButton(
+                    onClick = onExportWordClick,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Default.Description,
+                        contentDescription = "مشاركة السورة كملف Word",
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onExportPdfClick,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Default.PictureAsPdf,
+                        contentDescription = "مشاركة السورة كملف PDF",
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
         }
     }

@@ -96,17 +96,19 @@ fun AyahPosterDialog(
     val context = LocalContext.current
     var selectedTheme by remember { mutableStateOf(PosterTheme.EMERALD_GOLD) }
     var includeBasmala by remember { mutableStateOf(ayah.surahId != 9 && ayah.ayahNumber != 1) }
+    var includeSadaqallah by remember { mutableStateOf(true) }
     var fontSizeScale by remember { mutableStateOf(50f) }
     var isJustified by remember { mutableStateOf(true) }
 
     // Generate preview bitmap
-    val previewBitmap = remember(ayah, surahName, selectedTheme, includeBasmala, fontSizeScale, isJustified) {
+    val previewBitmap = remember(ayah, surahName, selectedTheme, includeBasmala, includeSadaqallah, fontSizeScale, isJustified) {
         generateAyahPosterBitmap(
             context = context,
             surahName = surahName,
             ayahNumber = ayah.ayahNumber,
             textUthmani = ayah.textUthmani,
             includeBasmala = includeBasmala,
+            includeSadaqallah = includeSadaqallah,
             theme = selectedTheme,
             textSizePx = fontSizeScale,
             isJustified = isJustified
@@ -194,7 +196,7 @@ fun AyahPosterDialog(
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(Color(0xFF192A1F))
-                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -215,13 +217,39 @@ fun AyahPosterDialog(
                         }
                     }
 
+                    // Sadaqallah Toggle Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF192A1F))
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "إظهار صدق الله العظيم",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFFD0E0D4)
+                        )
+                        Switch(
+                            checked = includeSadaqallah,
+                            onCheckedChange = { includeSadaqallah = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color(0xFF09120D),
+                                checkedTrackColor = Color(0xFFD4AF37)
+                            )
+                        )
+                    }
+
                     // Font Size Control Row
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
                             .background(Color(0xFF192A1F))
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -270,7 +298,7 @@ fun AyahPosterDialog(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
                             .background(Color(0xFF192A1F))
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -372,6 +400,7 @@ fun generateAyahPosterBitmap(
     ayahNumber: Int,
     textUthmani: String,
     includeBasmala: Boolean,
+    includeSadaqallah: Boolean,
     theme: PosterTheme,
     textSizePx: Float = 50f,
     isJustified: Boolean = true
@@ -385,7 +414,7 @@ fun generateAyahPosterBitmap(
         typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
     }
 
-    val fullAyahText = "$textUthmani ﴿${ayahNumber.toArabicNumerals()}﴾"
+    val fullAyahText = "$textUthmani \u06DD${ayahNumber.toArabicNumerals()}"
     val contentWidth = width - (basePadding * 2)
 
     val alignment = if (isJustified) Layout.Alignment.ALIGN_NORMAL else Layout.Alignment.ALIGN_CENTER
@@ -407,7 +436,8 @@ fun generateAyahPosterBitmap(
 
     // Dynamic height based on text length and basmala
     val basmalaExtraHeight = if (includeBasmala) ((textSizePx * 1.5f).coerceAtLeast(70f)).toInt() else 0
-    val calculatedHeight = (staticLayout.height + 620 + basmalaExtraHeight).coerceAtLeast(1200)
+    val sadaqallahExtraHeight = if (includeSadaqallah) ((textSizePx * 1.5f).coerceAtLeast(70f)).toInt() else 0
+    val calculatedHeight = (staticLayout.height + 660 + basmalaExtraHeight + sadaqallahExtraHeight).coerceAtLeast(1300)
     val bitmap = Bitmap.createBitmap(width, calculatedHeight, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
 
@@ -455,21 +485,21 @@ fun generateAyahPosterBitmap(
     // 3. Header: App Name "صوت القرءان"
     val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = theme.accentColor.toArgb()
-        textSize = 38f
+        textSize = 50f
         typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
         textAlign = Paint.Align.CENTER
     }
-    canvas.drawText("۞  صوت القرءان  ۞", width / 2f, margin + 110f, headerPaint)
+    canvas.drawText("۞  صوت القرءان  ۞", width / 2f, margin + 120f, headerPaint)
 
     // 4. Surah & Ayah Badge
     val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = theme.accentColor.toArgb()
-        textSize = 32f
+        textSize = 42f
         typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
         textAlign = Paint.Align.CENTER
     }
     val surahBadgeText = "سورة $surahName  •  الآية ${ayahNumber.toArabicNumerals()}"
-    canvas.drawText(surahBadgeText, width / 2f, margin + 180f, badgePaint)
+    canvas.drawText(surahBadgeText, width / 2f, margin + 200f, badgePaint)
 
     // Separator line
     val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -477,9 +507,9 @@ fun generateAyahPosterBitmap(
         strokeWidth = 2f
         alpha = 180
     }
-    canvas.drawLine(width / 2f - 180f, margin + 215f, width / 2f + 180f, margin + 215f, linePaint)
+    canvas.drawLine(width / 2f - 240f, margin + 250f, width / 2f + 240f, margin + 250f, linePaint)
 
-    var currentY = margin + 270f
+    var currentY = margin + 340f
 
     // 5. Bismillah (if enabled)
     if (includeBasmala) {
@@ -511,14 +541,26 @@ fun generateAyahPosterBitmap(
     canvas.translate(basePadding.toFloat(), currentY)
     staticLayout.draw(canvas)
     canvas.restore()
+    
+    val textBottomY = currentY + staticLayout.height
+
+    if (includeSadaqallah) {
+        val sadaqPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = theme.accentColor.toArgb()
+            textSize = (textSizePx * 0.85f).coerceIn(26f, 85f)
+            typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText("صَدَقَ اللَّهُ العَلِيُّ العَظِيمُ", width / 2f, textBottomY + (textSizePx * 1.5f).coerceAtLeast(60f), sadaqPaint)
+    }
 
     // 7. Footer: App branding at bottom
-    val footerY = calculatedHeight - (margin + 80f)
-    canvas.drawLine(width / 2f - 140f, footerY - 45f, width / 2f + 140f, footerY - 45f, linePaint)
+    val footerY = calculatedHeight - (margin + 60f)
+    canvas.drawLine(width / 2f - 180f, footerY - 45f, width / 2f + 180f, footerY - 45f, linePaint)
 
     val footerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = if (theme.isDark) Color(0xFFA0B5A6).toArgb() else Color(0xFF665544).toArgb()
-        textSize = 28f
+        textSize = 30f
         textAlign = Paint.Align.CENTER
     }
     canvas.drawText("تطبيق صوت القرءان الكريم", width / 2f, footerY, footerPaint)

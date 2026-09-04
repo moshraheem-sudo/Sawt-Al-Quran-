@@ -1057,14 +1057,12 @@ fun AyahItem(
                     )
                 }
             }
-            Text(
-                text = "${ayah.textUthmani} ﴿${ayah.ayahNumber.toArabicNumerals()}﴾",
-                style = MaterialTheme.typography.headlineSmall,
-                textAlign = TextAlign.Justify,
+            com.example.ui.components.AyahText(
+                textUthmani = ayah.textUthmani,
+                ayahNumber = ayah.ayahNumber,
                 fontSize = (24 * textScale).sp,
-                lineHeight = (40 * textScale).sp,
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Justify
             )
         }
     }

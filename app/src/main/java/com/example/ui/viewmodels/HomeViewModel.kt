@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class HomeViewModel(private val repository: QuranRepository) : ViewModel() {
@@ -34,6 +35,17 @@ class HomeViewModel(private val repository: QuranRepository) : ViewModel() {
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
+    private val _isAyahLoopPaused = MutableStateFlow(false)
+    val isAyahLoopPaused: StateFlow<Boolean> = _isAyahLoopPaused.asStateFlow()
+
+    fun pauseRandomAyahLoop() {
+        _isAyahLoopPaused.value = true
+    }
+
+    fun resumeRandomAyahLoop() {
+        _isAyahLoopPaused.value = false
+    }
+
     private val _lastReadAyahText = MutableStateFlow<String?>(null)
     val lastReadAyahText: StateFlow<String?> = _lastReadAyahText.asStateFlow()
 
@@ -46,6 +58,20 @@ class HomeViewModel(private val repository: QuranRepository) : ViewModel() {
         }
     }
 
+    fun updateRandomAyahTo(surahId: Int, ayahNumber: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ayah = repository.getAyahByNumber(surahId, ayahNumber)
+            if (ayah != null) {
+                _randomAyah.value = ayah
+                _randomAyahSurahName.value = repository.getSurahNameById(ayah.surahId) ?: ""
+            }
+        }
+    }
+
+    suspend fun getAyahsForSurah(surahId: Int): List<AyahEntity> {
+        return repository.getAyahs(surahId).first()
+    }
+
     init {
         // Start background sync
         viewModelScope.launch(Dispatchers.IO) {
@@ -56,9 +82,41 @@ class HomeViewModel(private val repository: QuranRepository) : ViewModel() {
         startRandomAyahLoop()
     }
     
+    fun playNextRandomAyah(audioManager: com.example.audio.AudioPlayerManager?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            // انتظار ثانيتين قبل التغيير للآية التالية
+            kotlinx.coroutines.delay(2000L)
+            
+            // إذا تم إيقاف الاستماع أثناء الانتظار، نتوقف
+            if (!_isAyahLoopPaused.value) return@launch
+
+            val ayah = repository.getRandomAyah()
+            if (ayah != null) {
+                _randomAyah.value = ayah
+                _randomAyahSurahName.value = repository.getSurahNameById(ayah.surahId) ?: ""
+                
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    audioManager?.playAyah(
+                        surahId = ayah.surahId,
+                        ayahNumber = ayah.ayahNumber,
+                        continuous = false,
+                        onCompletion = {
+                            playNextRandomAyah(audioManager)
+                        }
+                    )
+                }
+            }
+        }
+    }
+
     private fun startRandomAyahLoop() {
         viewModelScope.launch(Dispatchers.IO) {
             while (true) {
+                if (_isAyahLoopPaused.value) {
+                    kotlinx.coroutines.delay(1000L)
+                    continue
+                }
+
                 val ayah = repository.getRandomAyah()
                 var delayTime = 6000L // 6 seconds by default
                 
@@ -72,7 +130,12 @@ class HomeViewModel(private val repository: QuranRepository) : ViewModel() {
                     }
                 }
                 
-                kotlinx.coroutines.delay(delayTime)
+                // Sleep in small increments or delayTime while checking pause status
+                val startTime = System.currentTimeMillis()
+                while (System.currentTimeMillis() - startTime < delayTime) {
+                    if (_isAyahLoopPaused.value) break
+                    kotlinx.coroutines.delay(500L)
+                }
             }
         }
     }

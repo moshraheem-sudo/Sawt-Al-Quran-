@@ -179,16 +179,19 @@ class AudioPlayerManager {
         return builder.build()
     }
 
+    private var onCompletionCallback: (() -> Unit)? = null
+
     fun setReciter(reciter: Reciter) {
         _currentReciter.value = reciter
     }
 
-    fun playAyah(surahId: Int, ayahNumber: Int, totalAyahs: Int = 0, continuous: Boolean = false) {
+    fun playAyah(surahId: Int, ayahNumber: Int, totalAyahs: Int = 0, continuous: Boolean = false, onCompletion: (() -> Unit)? = null) {
         stop()
         currentSurahId = surahId
         currentAyahNumber = ayahNumber
         maxAyahs = if (surahId in 1..114) SURAH_AYAH_COUNTS[surahId - 1] else totalAyahs
         isContinuousMode = continuous
+        onCompletionCallback = onCompletion
         
         playCurrent()
     }
@@ -289,10 +292,14 @@ class AudioPlayerManager {
                         maxAyahs = SURAH_AYAH_COUNTS[currentSurahId - 1]
                         playCurrent()
                     } else {
+                        val callback = onCompletionCallback
                         stop()
+                        callback?.invoke()
                     }
                 } else {
+                    val callback = onCompletionCallback
                     stop()
+                    callback?.invoke()
                 }
             }
             setOnErrorListener { _, _, _ ->
@@ -317,6 +324,7 @@ class AudioPlayerManager {
         mediaPlayer = null
         _isPlaying.value = false
         _currentPlayingAyah.value = null
+        onCompletionCallback = null
         
         AyahAudioService.instance?.let { service ->
             service.stopForeground(true)
