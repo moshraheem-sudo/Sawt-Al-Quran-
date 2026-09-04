@@ -87,8 +87,7 @@ fun SettingsDialog(
     var notificationsEnabled by remember { mutableStateOf(NotificationSettingsManager.areNotificationsEnabled(context)) }
 
     // 2. Nour Al-Itrah App Update State
-    val nourCurrentVersion = AppUpdateManager.NOUR_CURRENT_VERSION
-    var nourUpcomingVersion by remember { mutableStateOf(nourCurrentVersion) }
+    var nourUpcomingVersion by remember { mutableStateOf("") }
     var nourUpdateInfo by remember { mutableStateOf<AppReleaseInfo?>(null) }
     var nourUpdateStatus by remember { mutableStateOf(UpdateStatus.IDLE) }
     var nourDownloadProgress by remember { mutableStateOf(0f) }
@@ -816,7 +815,27 @@ fun SettingsDialog(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { isNourUpdateExpanded = !isNourUpdateExpanded }
+                                    .clickable {
+                                        isNourUpdateExpanded = !isNourUpdateExpanded
+                                        if (isNourUpdateExpanded && nourUpdateStatus == UpdateStatus.IDLE) {
+                                            coroutineScope.launch {
+                                                nourUpdateStatus = UpdateStatus.CHECKING
+                                                val result = AppUpdateManager.checkNourUpdate()
+                                                val info = result.getOrNull()
+                                                if (info != null) {
+                                                    nourUpdateInfo = info
+                                                    nourUpcomingVersion = info.tagName
+                                                    if (info.isNewerAvailable) {
+                                                        nourUpdateStatus = UpdateStatus.AVAILABLE
+                                                    } else {
+                                                        nourUpdateStatus = UpdateStatus.UP_TO_DATE
+                                                    }
+                                                } else {
+                                                    nourUpdateStatus = UpdateStatus.UP_TO_DATE
+                                                }
+                                            }
+                                        }
+                                    }
                                     .padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
@@ -854,38 +873,18 @@ fun SettingsDialog(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceEvenly,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Surface(
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
                                     ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(20.dp),
-                                            color = MaterialTheme.colorScheme.primaryContainer,
-                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
-                                        ) {
-                                            Text(
-                                                text = "الحالي: $nourCurrentVersion",
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                                            )
-                                        }
-
-                                        Surface(
-                                            shape = RoundedCornerShape(20.dp),
-                                            color = MaterialTheme.colorScheme.surfaceVariant,
-                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
-                                        ) {
-                                            Text(
-                                                text = "القادم: $nourUpcomingVersion",
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
+                                        Text(
+                                            text = if (nourUpcomingVersion.isNotEmpty()) "الإصدار المتوفر: $nourUpcomingVersion" else "الإصدار المتوفر: جاري التحقق...",
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
                                     }
 
                                     when (nourUpdateStatus) {
@@ -1178,7 +1177,7 @@ fun SettingsDialog(
 
                                         UpdateStatus.UP_TO_DATE -> {
                                             Text(
-                                                text = "تطبيقك محدّث بأحدث إصدار متوفر بالفعل ($nourCurrentVersion)",
+                                                text = "الإصدار المتوفر حالياً على الرابط هو ($nourUpcomingVersion)",
                                                 fontSize = 13.sp,
                                                 color = MaterialTheme.colorScheme.primary,
                                                 textAlign = TextAlign.Center
