@@ -1,0 +1,8 @@
+{
+  "name": "Sawt_AL_Quran",
+  "description": "تطبيق لقراءة القرآن والاستماع إليه مع ميزات التظليل التلقائي والتشغيل دون اتصال.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
