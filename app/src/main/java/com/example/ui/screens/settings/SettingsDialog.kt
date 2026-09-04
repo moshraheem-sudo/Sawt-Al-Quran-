@@ -990,8 +990,8 @@ fun SettingsDialog(
                                                         nourDownloadProgress = 0f
                                                         nourDownloadedMB = 0f
 
-                                                        val downloadUrl = nourUpdateInfo?.downloadUrl ?: AppUpdateManager.QURAN_DIRECT_APK
-                                                        val fileName = "SawtALQuran_v${nourUpcomingVersion}.apk"
+                                                        val downloadUrl = nourUpdateInfo?.downloadUrl ?: AppUpdateManager.NOUR_DIRECT_APK
+                                                        val fileName = "Noor_Al-Atra_v${nourUpcomingVersion}.apk"
 
                                                         AppUpdateManager.downloadApkFile(
                                                             context = context,
@@ -1042,7 +1042,7 @@ fun SettingsDialog(
 
                                             TextButton(
                                                 onClick = {
-                                                    AppUpdateManager.postponeQuranVersion(context, nourUpcomingVersion)
+                                                    AppUpdateManager.postponeNourVersion(context, nourUpcomingVersion)
                                                     nourUpdateStatus = UpdateStatus.UP_TO_DATE
                                                     Toast.makeText(context, "تم تأجيل التحديث", Toast.LENGTH_SHORT).show()
                                                 }

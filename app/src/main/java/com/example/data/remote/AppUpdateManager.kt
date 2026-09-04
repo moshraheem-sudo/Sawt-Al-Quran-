@@ -48,14 +48,15 @@ sealed class DownloadState {
 object AppUpdateManager {
     const val QURAN_APP_NAME = "صوت القرآن"
     val QURAN_CURRENT_VERSION = "v" + com.example.BuildConfig.VERSION_NAME
-    const val QURAN_CHECK_API = "https://api.github.com/repos/moshraheem-sudo/Sawt_AL_Quran/releases/latest"
-    const val QURAN_RELEASE_PAGE = "https://github.com/moshraheem-sudo/Sawt_AL_Quran/releases/latest"
-    const val QURAN_DIRECT_APK = "https://github.com/moshraheem-sudo/Sawt_AL_Quran/releases/latest/download/app-release.apk"
+    const val QURAN_CHECK_API = "https://api.github.com/repos/moshraheem-sudo/Sawt-Al-Quran-/releases/latest"
+    const val QURAN_RELEASE_PAGE = "https://github.com/moshraheem-sudo/Sawt-Al-Quran-/releases/latest"
+    const val QURAN_DIRECT_APK = "https://github.com/moshraheem-sudo/Sawt-Al-Quran-/releases/latest/download/app-release.apk"
 
     const val NOUR_APP_NAME = "نور العترة"
     const val NOUR_CURRENT_VERSION = "v1.0.0"
-    const val NOUR_CHECK_API = "https://api.github.com/repos/moshraheem-sudo/myapp-updates/releases/latest"
-    const val NOUR_RELEASE_PAGE = "https://github.com/moshraheem-sudo/myapp-updates/releases/latest"
+    const val NOUR_CHECK_API = "https://api.github.com/repos/moshraheem-sudo/Noor-Al-Atra-/releases/latest"
+    const val NOUR_RELEASE_PAGE = "https://github.com/moshraheem-sudo/Noor-Al-Atra-/releases/latest"
+    const val NOUR_DIRECT_APK = "https://github.com/moshraheem-sudo/Noor-Al-Atra-/releases/latest/download/app-release.apk"
 
     private const val PREFS_NAME = "app_update_prefs"
     private const val KEY_POSTPONED_QURAN = "postponed_quran_version"
@@ -171,7 +172,7 @@ object AppUpdateManager {
                             tagName = NOUR_CURRENT_VERSION,
                             releaseName = "تحديث تطبيق نور العترة",
                             releaseNotes = "تطبيق نور العترة بالأدعية والتلاوات المباركة.",
-                            downloadUrl = "https://github.com/moshraheem-sudo/myapp-updates/releases/latest/download/app-release.apk",
+                            downloadUrl = NOUR_DIRECT_APK,
                             htmlUrl = NOUR_RELEASE_PAGE,
                             isNewerAvailable = false
                         )
@@ -200,7 +201,7 @@ object AppUpdateManager {
                     }
                 }
                 if (downloadUrl.isEmpty()) {
-                    downloadUrl = "https://github.com/moshraheem-sudo/myapp-updates/releases/latest/download/app-release.apk"
+                    downloadUrl = NOUR_DIRECT_APK
                 }
 
                 val isNewer = isVersionNewer(tagName, NOUR_CURRENT_VERSION)
@@ -301,7 +302,7 @@ object AppUpdateManager {
 
             val request = Request.Builder()
                 .url(downloadUrl)
-                .header("User-Agent", "SawtALQuranApp/1.30.0")
+                .header("User-Agent", "SawtALQuranApp/${com.example.BuildConfig.VERSION_NAME}")
                 .build()
 
             client.newCall(request).execute().use { response ->
