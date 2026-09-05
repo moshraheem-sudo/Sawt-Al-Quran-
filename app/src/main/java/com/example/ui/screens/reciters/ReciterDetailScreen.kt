@@ -1190,29 +1190,7 @@ class ReciterDetailViewModel : ViewModel() {
         if (localFile.exists() && localFile.length() > 0) {
             shareDownloadedFile(context, localFile, surahName, reciterName)
         } else {
-            // Auto download then share
-            Toast.makeText(context, "جاري تنزيل الملف لمشاركته...", Toast.LENGTH_SHORT).show()
-            downloadSurah(
-                context = context,
-                reciterId = reciterId,
-                styleId = styleId,
-                surahId = surahId,
-                url = url,
-                surahName = surahName
-            )
-            // Monitor until downloaded then launch share intent
-            viewModelScope.launch(Dispatchers.IO) {
-                var attempts = 0
-                while (!localFile.exists() && attempts < 120) {
-                    kotlinx.coroutines.delay(1000)
-                    attempts++
-                }
-                if (localFile.exists()) {
-                    withContext(Dispatchers.Main) {
-                        shareDownloadedFile(context, localFile, surahName, reciterName)
-                    }
-                }
-            }
+            Toast.makeText(context, "يجب تنزيل السورة كملف صوتي أولاً لتتمكن من مشاركتها", Toast.LENGTH_LONG).show()
         }
     }
 

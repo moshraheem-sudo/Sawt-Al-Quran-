@@ -59,20 +59,21 @@ fun DownloadFullQuranDialog(onDismiss: () -> Unit) {
                 if (progress != null) {
                     val p = progress!!
                     val percentage = (p.currentSurah * 100) / p.totalSurahs
+                    
                     Text(
-                        text = "جاري التحميل... سورة ${p.currentSurah} من ${p.totalSurahs}",
+                        text = if (p.isPaused) "تم الإيقاف المؤقت (سورة ${p.currentSurah} من ${p.totalSurahs})" else "جاري التحميل... سورة ${p.currentSurah} من ${p.totalSurahs}",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = if (p.isPaused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
                     LinearProgressIndicator(
                         progress = p.currentSurah / p.totalSurahs.toFloat(),
                         modifier = Modifier.fillMaxWidth().height(8.dp),
-                        color = MaterialTheme.colorScheme.primary
+                        color = if (p.isPaused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "يرجى عدم إغلاق التطبيق حتى يكتمل التنزيل للاستمتاع بالقراءة والتظليل بدون إنترنت.",
+                        text = if (p.isPaused) "التحميل متوقف مؤقتاً. يمكنك استئنافه متى شئت." else "يرجى عدم إغلاق التطبيق حتى يكتمل التنزيل للاستمتاع بالقراءة والتظليل بدون إنترنت.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -97,8 +98,8 @@ fun DownloadFullQuranDialog(onDismiss: () -> Unit) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { 
-                                            if (downloadedReciters[reciter.id] != true) {
+                                        .clickable {
+                                             if (downloadedReciters[reciter.id] != true) {
                                                  QuranAudioDownloader.downloadAll(context, reciter)
                                              } else {
                                                  android.widget.Toast.makeText(context, "تم تنزيل هذا القارئ مسبقاً", android.widget.Toast.LENGTH_SHORT).show()
@@ -115,11 +116,15 @@ fun DownloadFullQuranDialog(onDismiss: () -> Unit) {
                                         modifier = Modifier.weight(1f)
                                     )
                                     if (downloadedReciters[reciter.id] == true) {
-                                        Icon(
-                                            imageVector = Icons.Default.CheckCircle,
-                                            contentDescription = "تم التنزيل",
-                                            tint = Color(0xFF388E3C)
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("مكتمل التنزيل", color = Color(0xFF388E3C), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(end = 4.dp))
+                                            Icon(
+                                                imageVector = Icons.Default.CheckCircle,
+                                                contentDescription = "تم التنزيل",
+                                                tint = Color(0xFF388E3C),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -129,8 +134,44 @@ fun DownloadFullQuranDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(if (progress != null) "إخفاء" else "إلغاء")
+            if (progress != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    TextButton(
+                        onClick = { QuranAudioDownloader.cancel() },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
+                    ) {
+                        Text("إلغاء", fontSize = 13.sp)
+                    }
+                    if (progress!!.isPaused) {
+                        TextButton(
+                            onClick = { QuranAudioDownloader.resume(context) },
+                            contentPadding = PaddingValues(horizontal = 4.dp)
+                        ) {
+                            Text("استئناف", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
+                        }
+                    } else {
+                        TextButton(
+                            onClick = { QuranAudioDownloader.pause() },
+                            contentPadding = PaddingValues(horizontal = 4.dp)
+                        ) {
+                            Text("إيقاف مؤقت", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
+                        }
+                    }
+                    TextButton(
+                        onClick = onDismiss,
+                        contentPadding = PaddingValues(horizontal = 4.dp)
+                    ) {
+                        Text("إخفاء", fontSize = 13.sp)
+                    }
+                }
+            } else {
+                TextButton(onClick = onDismiss) {
+                    Text("إغلاق")
+                }
             }
         }
     )

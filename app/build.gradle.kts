@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.quran.abxzw1.mbsdtt"
     minSdk = 24
     targetSdk = 36
-    versionCode = 2600
-    versionName = "2.60.0"
+    versionCode = 31000
+    versionName = "3.10.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

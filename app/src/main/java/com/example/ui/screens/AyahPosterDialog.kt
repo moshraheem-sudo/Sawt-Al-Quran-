@@ -436,7 +436,7 @@ fun generateAyahPosterBitmap(
 
     // Dynamic height based on text length and basmala
     val basmalaExtraHeight = if (includeBasmala) ((textSizePx * 1.5f).coerceAtLeast(70f)).toInt() else 0
-    val sadaqallahExtraHeight = if (includeSadaqallah) ((textSizePx * 1.5f).coerceAtLeast(70f)).toInt() else 0
+    val sadaqallahExtraHeight = if (includeSadaqallah) ((textSizePx * 2.5f).coerceAtLeast(130f)).toInt() else 0
     val calculatedHeight = (staticLayout.height + 660 + basmalaExtraHeight + sadaqallahExtraHeight).coerceAtLeast(1300)
     val bitmap = Bitmap.createBitmap(width, calculatedHeight, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
@@ -551,7 +551,8 @@ fun generateAyahPosterBitmap(
             typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
             textAlign = Paint.Align.CENTER
         }
-        canvas.drawText("صَدَقَ اللَّهُ العَلِيُّ العَظِيمُ", width / 2f, textBottomY + (textSizePx * 1.5f).coerceAtLeast(60f), sadaqPaint)
+        val extraSpacing = (textSizePx * 2.5f).coerceAtLeast(120f)
+        canvas.drawText("صَدَقَ اللَّهُ العَلِيُّ العَظِيمُ", width / 2f, textBottomY + extraSpacing, sadaqPaint)
     }
 
     // 7. Footer: App branding at bottom

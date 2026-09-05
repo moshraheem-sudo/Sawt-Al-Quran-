@@ -697,8 +697,8 @@ fun HomeScreen(
                                                 Row(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
-                                                        .padding(horizontal = 4.dp),
-                                                    horizontalArrangement = Arrangement.SpaceEvenly,
+                                                        .padding(horizontal = 0.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     // زر مشاركة الآية كصورة
@@ -708,18 +708,18 @@ fun HomeScreen(
                                                             posterSurahName = randomSurahName
                                                             showPosterDialog = true
                                                         },
-                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
                                                     ) {
                                                         Icon(
                                                             imageVector = Icons.Default.Share,
                                                             contentDescription = "مشاركة الآية كصورة",
-                                                            modifier = Modifier.size(17.dp),
+                                                            modifier = Modifier.size(15.dp),
                                                             tint = MaterialTheme.colorScheme.primary
                                                         )
-                                                        Spacer(modifier = Modifier.width(5.dp))
+                                                        Spacer(modifier = Modifier.width(3.dp))
                                                         Text(
                                                             text = "مشاركة كصورة",
-                                                            fontSize = 12.sp,
+                                                            fontSize = 11.sp,
                                                             fontWeight = FontWeight.Medium,
                                                             color = MaterialTheme.colorScheme.primary
                                                         )
@@ -743,18 +743,18 @@ fun HomeScreen(
                                                                 )
                                                             }
                                                         },
-                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
                                                     ) {
                                                         Icon(
                                                             imageVector = if (isThisAyahPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
                                                             contentDescription = if (isThisAyahPlaying) "إيقاف الاستماع" else "استماع للآية",
-                                                            modifier = Modifier.size(18.dp),
+                                                            modifier = Modifier.size(16.dp),
                                                             tint = MaterialTheme.colorScheme.primary
                                                         )
-                                                        Spacer(modifier = Modifier.width(5.dp))
+                                                        Spacer(modifier = Modifier.width(3.dp))
                                                         Text(
                                                             text = if (isThisAyahPlaying) "إيقاف" else "استماع للآية",
-                                                            fontSize = 12.sp,
+                                                            fontSize = 11.sp,
                                                             fontWeight = FontWeight.Medium,
                                                             color = MaterialTheme.colorScheme.primary
                                                         )
@@ -766,18 +766,25 @@ fun HomeScreen(
                                                             viewModel.pauseRandomAyahLoop()
                                                             showReciterDialog = true
                                                         },
-                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
                                                     ) {
                                                         Icon(
                                                             imageVector = Icons.Default.RecordVoiceOver,
                                                             contentDescription = "تغيير القارئ",
-                                                            modifier = Modifier.size(17.dp),
+                                                            modifier = Modifier.size(14.dp),
                                                             tint = MaterialTheme.colorScheme.primary
                                                         )
-                                                        Spacer(modifier = Modifier.width(5.dp))
+                                                        Spacer(modifier = Modifier.width(3.dp))
+                                                        
+                                                        val shortName = when (currentReciter.id) {
+                                                            "abdulbasit" -> "عبد الباسط"
+                                                            "minshawy" -> "محمد المنشاوي"
+                                                            "husary" -> "محمود الحصري"
+                                                            else -> currentReciter.name
+                                                        }
                                                         Text(
-                                                            text = currentReciter.name.split(" ").firstOrNull() ?: "القارئ",
-                                                            fontSize = 12.sp,
+                                                            text = shortName,
+                                                            fontSize = 11.sp,
                                                             fontWeight = FontWeight.Medium,
                                                             color = MaterialTheme.colorScheme.primary
                                                         )
@@ -844,19 +851,7 @@ fun HomeScreen(
                 items(surahs, key = { it.id }) { surah ->
                     SurahItem(
                         surah = surah,
-                        onClick = { onSurahSelected(surah.id) },
-                        onExportPdfClick = {
-                            coroutineScope.launch {
-                                val ayahs = viewModel.getAyahsForSurah(surah.id)
-                                com.example.utils.PdfExporter.exportSurahToPdf(context, surah.nameAr, ayahs)
-                            }
-                        },
-                        onExportWordClick = {
-                            coroutineScope.launch {
-                                val ayahs = viewModel.getAyahsForSurah(surah.id)
-                                com.example.utils.WordExporter.exportSurahToWord(context, surah.nameAr, ayahs)
-                            }
-                        }
+                        onClick = { onSurahSelected(surah.id) }
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
@@ -902,19 +897,7 @@ fun HomeScreen(
                     items(matchingSurahs, key = { "match_surah_${it.id}" }) { surah ->
                         SurahItem(
                             surah = surah,
-                            onClick = { onSurahSelected(surah.id) },
-                            onExportPdfClick = {
-                                coroutineScope.launch {
-                                    val ayahs = viewModel.getAyahsForSurah(surah.id)
-                                    com.example.utils.PdfExporter.exportSurahToPdf(context, surah.nameAr, ayahs)
-                                }
-                            },
-                            onExportWordClick = {
-                                coroutineScope.launch {
-                                    val ayahs = viewModel.getAyahsForSurah(surah.id)
-                                    com.example.utils.WordExporter.exportSurahToWord(context, surah.nameAr, ayahs)
-                                }
-                            }
+                            onClick = { onSurahSelected(surah.id) }
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
@@ -1016,9 +999,7 @@ fun SearchAyahItem(
 @Composable
 fun SurahItem(
     surah: SurahEntity,
-    onClick: () -> Unit,
-    onExportPdfClick: () -> Unit,
-    onExportWordClick: () -> Unit
+    onClick: () -> Unit
 ) {
     fun Int.toArabicNumerals(): String {
         val arabicNumerals = arrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
@@ -1074,30 +1055,6 @@ fun SurahItem(
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(
-                    onClick = onExportWordClick,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = androidx.compose.material.icons.Icons.Default.Description,
-                        contentDescription = "مشاركة السورة كملف Word",
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-                IconButton(
-                    onClick = onExportPdfClick,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        imageVector = androidx.compose.material.icons.Icons.Default.PictureAsPdf,
-                        contentDescription = "مشاركة السورة كملف PDF",
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
             }
         }
     }

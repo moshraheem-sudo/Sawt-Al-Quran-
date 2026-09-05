@@ -1271,16 +1271,7 @@ fun FavoriteSurahRowItem(
                             if (fileToShare != null && fileToShare.exists()) {
                                 shareDownloadedFile(context, fileToShare, item.surahName, item.reciterName)
                             } else {
-                                try {
-                                    val intent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(Intent.EXTRA_SUBJECT, "سورة ${item.surahName} - بصوت ${item.reciterName}")
-                                        putExtra(Intent.EXTRA_TEXT, "استمع إلى تلاوة سورة ${item.surahName} بصوت القارئ ${item.reciterName} من خلال هذا الرابط:\n$remoteUrl")
-                                    }
-                                    context.startActivity(Intent.createChooser(intent, "مشاركة الرابط"))
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "حدث خطأ أثناء المشاركة", Toast.LENGTH_SHORT).show()
-                                }
+                                Toast.makeText(context, "يجب تنزيل السورة كملف صوتي أولاً لتتمكن من مشاركتها", Toast.LENGTH_LONG).show()
                             }
                         },
                         modifier = Modifier.size(36.dp)

@@ -145,6 +145,52 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // Observe pending navigation
+                    // Update checking on startup
+
+                    var quranUpdateInfo by remember { mutableStateOf<AppReleaseInfo?>(null) }
+
+                    var showUpdateDialog by remember { mutableStateOf(false) }
+
+
+
+                    LaunchedEffect(Unit) {
+
+                        val result = AppUpdateManager.checkQuranUpdate()
+
+                        val info = result.getOrNull()
+
+                        if (info != null && info.isNewerAvailable && !AppUpdateManager.isQuranVersionPostponed(context, info.tagName)) {
+
+                            quranUpdateInfo = info
+
+                            showUpdateDialog = true
+
+                        }
+
+                    }
+
+
+
+                    if (showUpdateDialog && quranUpdateInfo != null) {
+
+                        AppUpdateDialog(
+
+                            releaseInfo = quranUpdateInfo!!,
+
+                            onDismiss = { showUpdateDialog = false },
+
+                            onPostpone = { 
+
+                                AppUpdateManager.postponeQuranVersion(context, quranUpdateInfo!!.tagName)
+
+                                showUpdateDialog = false
+
+                            }
+
+                        )
+
+                    }
+
                     val pendingRoute by pendingNavigation.collectAsState(initial = null)
                     LaunchedEffect(pendingRoute) {
                         if (pendingRoute != null) {
