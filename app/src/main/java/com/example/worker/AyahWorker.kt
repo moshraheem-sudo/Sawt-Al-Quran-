@@ -13,6 +13,7 @@ import androidx.work.WorkerParameters
 import com.example.MainActivity
 import com.example.QuranApplication
 import com.example.R
+import com.example.data.local.AyahEntity
 import kotlinx.coroutines.Dispatchers
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -29,13 +30,33 @@ class AyahWorker(
         try {
             val app = context.applicationContext as QuranApplication
             val repository = app.repository
-            
-            // Get a short random ayah (length < 150 chars, but > 15 chars)
-            val randomAyah = repository.getRandomShortAyah(150)
             val isEnabled = NotificationSettingsManager.areNotificationsEnabled(context)
-            if (isEnabled && randomAyah != null) {
-                val surahName = repository.getSurahNameById(randomAyah.surahId) ?: ""
-                showNotification(randomAyah.textUthmani, surahName, randomAyah.ayahNumber, randomAyah.surahId)
+            if (!isEnabled) return@withContext Result.success()
+            
+            // Get a random starting ayah
+            val initialAyah = repository.getRandomShortAyah(160) ?: repository.getRandomAyah()
+            if (initialAyah != null) {
+                val surahName = repository.getSurahNameById(initialAyah.surahId) ?: ""
+                
+                val ayahsList = mutableListOf<AyahEntity>()
+                ayahsList.add(initialAyah)
+
+                // If the initial ayah is very short (e.g. less than 50 chars like "الرحمن" or "حم"),
+                // include subsequent consecutive ayahs to form a complete, coherent passage (max 4 ayahs / 140 chars)
+                var currentAyahNum = initialAyah.ayahNumber + 1
+                var totalLen = initialAyah.textUthmani.trim().length
+                while (totalLen < 50 && ayahsList.size < 4) {
+                    val nextAyah = repository.getAyahByNumber(initialAyah.surahId, currentAyahNum)
+                    if (nextAyah != null) {
+                        ayahsList.add(nextAyah)
+                        totalLen += nextAyah.textUthmani.trim().length
+                        currentAyahNum++
+                    } else {
+                        break
+                    }
+                }
+
+                showNotification(ayahsList, surahName)
             }
             
             Result.success()
@@ -45,29 +66,59 @@ class AyahWorker(
         }
     }
 
-    private fun showNotification(ayahText: String, surahName: String, ayahNumber: Int, surahId: Int) {
+    private fun Int.toArabicNumerals(): String {
+        val arabicNumerals = charArrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
+        return this.toString().map { if (it.isDigit()) arabicNumerals[it - '0'] else it }.joinToString("")
+    }
+
+    private fun showNotification(ayahs: List<AyahEntity>, surahName: String) {
+        if (ayahs.isEmpty()) return
+        val firstAyah = ayahs.first()
+        val lastAyah = ayahs.last()
+        val surahId = firstAyah.surahId
+
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = "ayah_of_the_day_channel"
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 channelId,
-                "إشعار آية اليوم",
+                "نفحات من القرآن الكريم",
                 NotificationManager.IMPORTANCE_HIGH
             )
             notificationManager.createNotificationChannel(channel)
         }
 
-        val intent = Intent(context, MainActivity::class.java).apply {
+        // Format each ayah with its authentic Quranic end symbol ۝ and Arabic numerals, enclosed in ﴿ ﴾
+        val versesBody = ayahs.joinToString(" ") { ayah ->
+            val cleanText = ayah.textUthmani.trim()
+                .replace("*", "")
+                .removePrefix("﴿").removeSuffix("﴾")
+                .trim()
+            "$cleanText ۝${ayah.ayahNumber.toArabicNumerals()}"
+        }
+        val formattedQuranText = "﴿ $versesBody ﴾"
+
+        // Accurate reference: single ayah vs multiple ayahs
+        val ayahRangeStr = if (ayahs.size == 1) {
+            "الآية ${firstAyah.ayahNumber.toArabicNumerals()}"
+        } else {
+            "الآيات ${firstAyah.ayahNumber.toArabicNumerals()}-${lastAyah.ayahNumber.toArabicNumerals()}"
+        }
+        val fullReference = "سورة $surahName، $ayahRangeStr"
+
+        val readActionLabel = if (ayahs.size == 1) "📖 اقرأ الآية" else "📖 اقرأ الآيات"
+
+        val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             putExtra("open_surah_id", surahId)
-            putExtra("open_ayah_number", ayahNumber)
+            putExtra("open_ayah_number", firstAyah.ayahNumber)
         }
 
-        val pendingIntent = PendingIntent.getActivity(
+        val pendingOpenIntent = PendingIntent.getActivity(
             context,
             System.currentTimeMillis().toInt(),
-            intent,
+            openIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
@@ -75,8 +126,8 @@ class AyahWorker(
         val listenIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             putExtra("open_surah_id", surahId)
-            putExtra("open_ayah_number", ayahNumber)
-            putExtra("auto_play_ayah", true) // Ensure the app knows to play it
+            putExtra("open_ayah_number", firstAyah.ayahNumber)
+            putExtra("auto_play_ayah", true)
         }
         val pendingListenIntent = PendingIntent.getActivity(
             context,
@@ -84,16 +135,32 @@ class AyahWorker(
             listenIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+
+        val readIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra("open_surah_id", surahId)
+            putExtra("open_ayah_number", firstAyah.ayahNumber)
+        }
+        val pendingReadIntent = PendingIntent.getActivity(
+            context,
+            System.currentTimeMillis().toInt() + 2,
+            readIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
         
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setLargeIcon(largeIcon)
-            .setContentTitle("هل استمعت اليوم لكلام الله؟ 📖")
-            .setContentText("﴿ $ayahText ﴾")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("﴿ $ayahText ﴾ - سورة $surahName, الآية $ayahNumber"))
+            .setContentTitle("نفحات من القرآن الكريم 📖")
+            .setContentText("$formattedQuranText - $fullReference")
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText("$formattedQuranText\n\n- $fullReference")
+            )
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(pendingOpenIntent)
             .addAction(R.drawable.ic_notification, "▶ استمع الآن", pendingListenIntent)
+            .addAction(R.drawable.ic_notification, readActionLabel, pendingReadIntent)
             .setAutoCancel(true)
             .build()
 

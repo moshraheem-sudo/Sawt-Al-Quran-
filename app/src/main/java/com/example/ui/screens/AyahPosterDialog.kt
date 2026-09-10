@@ -414,7 +414,7 @@ fun generateAyahPosterBitmap(
         typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
     }
 
-    val fullAyahText = "$textUthmani \u06DD${ayahNumber.toArabicNumerals()}"
+    val fullAyahText = "$textUthmani ﴿${ayahNumber.toArabicNumerals()}﴾"
     val contentWidth = width - (basePadding * 2)
 
     val alignment = if (isJustified) Layout.Alignment.ALIGN_NORMAL else Layout.Alignment.ALIGN_CENTER

@@ -84,13 +84,22 @@ class MainActivity : ComponentActivity() {
     private fun checkIntentForNavigation(intent: Intent?) {
         val surahId = intent?.getIntExtra("open_surah_id", -1) ?: -1
         val ayahNumber = intent?.getIntExtra("open_ayah_number", -1) ?: -1
+        val autoPlay = intent?.getBooleanExtra("auto_play_ayah", false) ?: false
         if (surahId != -1) {
             val route = if (ayahNumber != -1) "reader/$surahId?initialAyah=$ayahNumber" else "reader/$surahId"
             pendingNavigation.value = route
             
+            if (autoPlay && ayahNumber != -1) {
+                lifecycleScope.launch {
+                    kotlinx.coroutines.delay(600)
+                    audioPlayerManager.playAyah(surahId, ayahNumber, continuous = true)
+                }
+            }
+            
             // clear extras to avoid handling them again
             intent?.removeExtra("open_surah_id")
             intent?.removeExtra("open_ayah_number")
+            intent?.removeExtra("auto_play_ayah")
         }
     }
 
