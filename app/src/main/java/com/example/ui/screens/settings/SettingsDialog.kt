@@ -29,6 +29,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.NotificationSettingsManager
+import com.example.notification.NotificationScheduler
+import com.example.notification.AyahNotificationHelper
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
@@ -85,6 +87,7 @@ fun SettingsDialog(
     var isAppInfoExpanded by remember { mutableStateOf(false) }
     var isNotificationsExpanded by remember { mutableStateOf(false) }
     var notificationsEnabled by remember { mutableStateOf(NotificationSettingsManager.areNotificationsEnabled(context)) }
+    var notificationsPerHour by remember { mutableIntStateOf(NotificationSettingsManager.getNotificationsPerHour(context)) }
 
     // 2. Nour Al-Itrah App Update State
     var nourUpcomingVersion by remember { mutableStateOf("") }
@@ -207,8 +210,10 @@ fun SettingsDialog(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(14.dp)
                                 ) {
+                                    // Master Switch Row
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -216,14 +221,14 @@ fun SettingsDialog(
                                     ) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = "باقة إشعارات الآيات",
+                                                text = "تفعيل باقة إشعارات الآيات",
                                                 style = MaterialTheme.typography.titleSmall,
                                                 fontWeight = FontWeight.Bold
                                             )
                                             Text(
-                                                text = "إرسال إشعارين في الساعة بآيات قرآنية مميزة",
+                                                text = if (notificationsEnabled) NotificationSettingsManager.getFrequencyDescription(notificationsPerHour) else "الإشعارات متوقفة حالياً",
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = if (notificationsEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                         Spacer(modifier = Modifier.width(8.dp))
@@ -233,19 +238,192 @@ fun SettingsDialog(
                                                 notificationsEnabled = enabled
                                                 NotificationSettingsManager.setNotificationsEnabled(context, enabled)
                                                 if (enabled) {
-                                                    val nextWork = androidx.work.PeriodicWorkRequestBuilder<AyahWorker>(1, TimeUnit.HOURS).build()
-                                                    WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                                                        "AyahNotificationWork",
-                                                        androidx.work.ExistingPeriodicWorkPolicy.UPDATE,
-                                                        nextWork
-                                                    )
-                                                    Toast.makeText(context, "تم تفعيل الإشعارات (إشعار كل ساعة)", Toast.LENGTH_SHORT).show()
+                                                    NotificationScheduler.schedule(context)
+                                                    Toast.makeText(context, "تم تفعيل الإشعارات: ${NotificationSettingsManager.getFrequencyDescription(notificationsPerHour)}", Toast.LENGTH_SHORT).show()
                                                 } else {
-                                                    WorkManager.getInstance(context).cancelUniqueWork("AyahNotificationWork")
+                                                    NotificationScheduler.cancel(context)
                                                     Toast.makeText(context, "تم إيقاف الإشعارات", Toast.LENGTH_SHORT).show()
                                                 }
                                             }
                                         )
+                                    }
+
+                                    if (notificationsEnabled) {
+                                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                                        // Frequency Header & Counter
+                                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "وتيرة التذكير بالآيات في الساعة",
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Surface(
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                                ) {
+                                                    Text(
+                                                        text = "$notificationsPerHour إشعار / ساعة",
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                                    )
+                                                }
+                                            }
+                                            Text(
+                                                text = "الوتيرة الحالية: ${NotificationSettingsManager.getFrequencyDescription(notificationsPerHour)}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+
+                                        // Frequency Slider (1 to 20 notifications per hour)
+                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Slider(
+                                                value = notificationsPerHour.toFloat(),
+                                                onValueChange = { newValue ->
+                                                    notificationsPerHour = newValue.toInt()
+                                                },
+                                                onValueChangeFinished = {
+                                                    NotificationSettingsManager.setNotificationsPerHour(context, notificationsPerHour)
+                                                    NotificationScheduler.schedule(context)
+                                                    Toast.makeText(context, "تم حفظ الوتيرة: ${NotificationSettingsManager.getFrequencyDescription(notificationsPerHour)}", Toast.LENGTH_SHORT).show()
+                                                },
+                                                valueRange = 1f..20f,
+                                                steps = 18,
+                                                colors = SliderDefaults.colors(
+                                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                                    activeTrackColor = MaterialTheme.colorScheme.primary
+                                                )
+                                            )
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "١ (كل ساعة)",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Text(
+                                                    text = "١٠ (كل ٦ دقائق)",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Text(
+                                                    text = "٢٠ (كل ٣ دقائق)",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+
+                                        // Quick Presets in 2-Column Spacious Grid
+                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text(
+                                                text = "خيارات جاهزة وسريعة:",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            
+                                            val presetPairs = listOf(
+                                                (20 to "كل ٣ دقائق") to (12 to "كل ٥ دقائق"),
+                                                (6 to "كل ١٠ دقائق") to (4 to "كل ربع ساعة"),
+                                                (2 to "كل نصف ساعة") to (1 to "كل ساعة")
+                                            )
+
+                                            presetPairs.forEach { (firstPreset, secondPreset) ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    // Item 1
+                                                    PresetCard(
+                                                        count = firstPreset.first,
+                                                        timeDesc = firstPreset.second,
+                                                        isSelected = (notificationsPerHour == firstPreset.first),
+                                                        modifier = Modifier.weight(1f),
+                                                        onClick = {
+                                                            notificationsPerHour = firstPreset.first
+                                                            NotificationSettingsManager.setNotificationsPerHour(context, firstPreset.first)
+                                                            NotificationScheduler.schedule(context)
+                                                            Toast.makeText(context, "تم اختيار: ${firstPreset.first} في الساعة (${firstPreset.second})", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    )
+                                                    // Item 2
+                                                    PresetCard(
+                                                        count = secondPreset.first,
+                                                        timeDesc = secondPreset.second,
+                                                        isSelected = (notificationsPerHour == secondPreset.first),
+                                                        modifier = Modifier.weight(1f),
+                                                        onClick = {
+                                                            notificationsPerHour = secondPreset.first
+                                                            NotificationSettingsManager.setNotificationsPerHour(context, secondPreset.first)
+                                                            NotificationScheduler.schedule(context)
+                                                            Toast.makeText(context, "تم اختيار: ${secondPreset.first} في الساعة (${secondPreset.second})", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // Test Immediate Notification Button
+                                        OutlinedButton(
+                                            onClick = {
+                                                coroutineScope.launch {
+                                                    val success = AyahNotificationHelper.showRandomAyahNotification(context, isTest = true)
+                                                    if (success) {
+                                                        Toast.makeText(context, "✅ تم إرسال إشعار قرآني تجريبي فوري", Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        Toast.makeText(context, "تعذر إرسال الإشعار، يرجى التأكد من صلاحية الإشعارات", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.outlinedButtonColors(
+                                                contentColor = MaterialTheme.colorScheme.primary
+                                            )
+                                        ) {
+                                            Icon(imageVector = Icons.Default.NotificationsActive, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("🔔 إرسال إشعار تجريبي فوري الآن", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        }
+
+                                        // Background Reliability Note
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CheckCircle,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Text(
+                                                    text = "تعمل الإشعارات في الخلفية وتستمر حتى عند إغلاق التطبيق أو بعد إعادة تشغيل الهاتف لضمان تذكيرك الدائم بآيات الله.",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                    lineHeight = 18.sp
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1374,3 +1552,51 @@ fun SettingsDialog(
     }
 }
 }
+
+@Composable
+private fun PresetCard(
+    count: Int,
+    timeDesc: String,
+    isSelected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+    val containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+    val contentColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        color = containerColor,
+        border = androidx.compose.foundation.BorderStroke(if (isSelected) 1.5.dp else 1.dp, borderColor)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = if (count == 1) "إشعار واحد / ساعة" else if (count == 2) "إشعاران / ساعة" else "$count إشعارات / ساعة",
+                fontSize = 11.5.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                color = contentColor,
+                textAlign = TextAlign.Center,
+                maxLines = 1
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = timeDesc,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Normal,
+                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 1
+            )
+        }
+    }
+}
+

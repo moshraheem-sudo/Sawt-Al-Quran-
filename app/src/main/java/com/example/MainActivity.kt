@@ -3,6 +3,7 @@ package com.example
 import androidx.compose.runtime.collectAsState
 import androidx.work.OneTimeWorkRequestBuilder
 import com.example.data.local.NotificationSettingsManager
+import com.example.notification.NotificationScheduler
 
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.WorkManager
@@ -113,15 +114,9 @@ class MainActivity : ComponentActivity() {
             PlayerManager.initialize(this@MainActivity)
         }
         
-        // Schedule random Ayah notifications once an hour
+        // Schedule random Ayah notifications according to user preference
         if (NotificationSettingsManager.areNotificationsEnabled(this)) {
-            val ayahWorkRequest = androidx.work.PeriodicWorkRequestBuilder<AyahWorker>(1, TimeUnit.HOURS)
-                .build()
-            WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-                "AyahNotificationWork",
-                androidx.work.ExistingPeriodicWorkPolicy.KEEP,
-                ayahWorkRequest
-            )
+            NotificationScheduler.schedule(this)
         }
 
 
