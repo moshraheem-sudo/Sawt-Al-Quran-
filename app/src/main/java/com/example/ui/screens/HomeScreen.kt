@@ -37,7 +37,14 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.audio.AVAILABLE_RECITERS
 import com.example.audio.AudioPlayerManager
 import com.example.audio.AyahAudioState
@@ -45,6 +52,8 @@ import com.example.audio.Reciter
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import com.example.data.local.BookmarkManager
+import com.example.data.local.HijriCalendarManager
+import com.example.data.local.HijriCalendarUiState
 import com.example.data.local.QuranBookmark
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -118,9 +127,28 @@ fun HomeScreen(
     }
 
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var settingsInitialExpandHijri by remember { mutableStateOf(false) }
     var showDownloadDialog by remember { mutableStateOf(false) }
     var showBookmarksSheet by remember { mutableStateOf(false) }
     var bookmarks by remember { mutableStateOf(emptyList<QuranBookmark>()) }
+
+    val hijriState by HijriCalendarManager.state.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(Unit) {
+        HijriCalendarManager.init(context)
+        HijriCalendarManager.refreshFromRemote(context, force = false)
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                coroutineScope.launch {
+                    HijriCalendarManager.refreshFromRemote(context, force = false)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     var showPosterDialog by remember { mutableStateOf(false) }
     var showReciterDialog by remember { mutableStateOf(false) }
@@ -131,6 +159,7 @@ fun HomeScreen(
     val isPlayingAudio by (audioManager?.isPlaying?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(false) })
     val currentPlayingAyah by (audioManager?.currentPlayingAyah?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(null) })
     val currentReciter by (audioManager?.currentReciter?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(AVAILABLE_RECITERS.first()) })
+    val isContinuousRandomListening by viewModel.isContinuousRandomListening.collectAsStateWithLifecycle()
 
     // If user opens reciter dialog, pause loop
     LaunchedEffect(showReciterDialog) {
@@ -139,9 +168,9 @@ fun HomeScreen(
         }
     }
 
-    // Keep loop paused while audio is playing, and resume when it stops (if reciter dialog isn't open)
-    LaunchedEffect(isPlayingAudio) {
-        if (isPlayingAudio) {
+    // Keep loop paused while audio is playing or continuous listening is transitioning, and resume when stopped
+    LaunchedEffect(isPlayingAudio, isContinuousRandomListening) {
+        if (isPlayingAudio || isContinuousRandomListening) {
             viewModel.pauseRandomAyahLoop()
         } else if (!showReciterDialog) {
             viewModel.resumeRandomAyahLoop()
@@ -187,7 +216,13 @@ fun HomeScreen(
     }
 
     if (showSettingsDialog) {
-        SettingsDialog(onDismiss = { showSettingsDialog = false })
+        SettingsDialog(
+            initialExpandHijri = settingsInitialExpandHijri,
+            onDismiss = {
+                showSettingsDialog = false
+                settingsInitialExpandHijri = false
+            }
+        )
     }
     if (showDownloadDialog) {
         DownloadFullQuranDialog(onDismiss = { showDownloadDialog = false })
@@ -443,7 +478,10 @@ fun HomeScreen(
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
-                IconButton(onClick = { showSettingsDialog = true }) {
+                IconButton(onClick = {
+                    settingsInitialExpandHijri = false
+                    showSettingsDialog = true
+                }) {
                     Icon(
                         imageVector = Icons.Default.Settings,
                         contentDescription = "الإعدادات",
@@ -460,6 +498,29 @@ fun HomeScreen(
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
+            // Hijri Calendar Card directly below the App Name bar
+            item {
+                HijriCalendarCard(
+                    state = hijriState,
+                    toArabicDigits = { it.toArabicNumerals() },
+                    onCardClick = {
+                        settingsInitialExpandHijri = true
+                        showSettingsDialog = true
+                    },
+                    onRefreshClick = {
+                        coroutineScope.launch {
+                            val result = HijriCalendarManager.refreshFromRemote(context, force = true)
+                            if (result.isSuccess) {
+                                Toast.makeText(context, "تم تحديث التقويم الهجري", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "تعذر التحديث، تأكد من الاتصال بالإنترنت", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             // Search Bar Component (Text & Voice Search)
             item {
                 OutlinedTextField(
@@ -728,32 +789,28 @@ fun HomeScreen(
                                                     // زر استماع للآية
                                                     TextButton(
                                                         onClick = {
-                                                            if (isThisAyahPlaying) {
-                                                                audioManager?.stop()
-                                                                viewModel.resumeRandomAyahLoop()
+                                                            if (isThisAyahPlaying || isContinuousRandomListening) {
+                                                                viewModel.stopContinuousRandomListening(audioManager)
                                                             } else {
-                                                                viewModel.pauseRandomAyahLoop()
-                                                                audioManager?.playAyah(
+                                                                viewModel.startContinuousRandomListening(
                                                                     surahId = targetAyah.surahId,
                                                                     ayahNumber = targetAyah.ayahNumber,
-                                                                    continuous = false,
-                                                                    onCompletion = {
-                                                                        viewModel.playNextRandomAyah(audioManager)
-                                                                    }
+                                                                    audioManager = audioManager
                                                                 )
                                                             }
                                                         },
                                                         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
                                                     ) {
+                                                        val isRandomAudioActive = isThisAyahPlaying || isContinuousRandomListening
                                                         Icon(
-                                                            imageVector = if (isThisAyahPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                                            contentDescription = if (isThisAyahPlaying) "إيقاف الاستماع" else "استماع للآية",
+                                                            imageVector = if (isRandomAudioActive) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                                            contentDescription = if (isRandomAudioActive) "إيقاف الاستماع" else "استماع للآية",
                                                             modifier = Modifier.size(16.dp),
                                                             tint = MaterialTheme.colorScheme.primary
                                                         )
                                                         Spacer(modifier = Modifier.width(3.dp))
                                                         Text(
-                                                            text = if (isThisAyahPlaying) "إيقاف" else "استماع للآية",
+                                                            text = if (isRandomAudioActive) "إيقاف" else "استماع للآية",
                                                             fontSize = 11.sp,
                                                             fontWeight = FontWeight.Medium,
                                                             color = MaterialTheme.colorScheme.primary
@@ -1059,3 +1116,153 @@ fun SurahItem(
         }
     }
 }
+
+@Composable
+fun HijriCalendarCard(
+    state: HijriCalendarUiState,
+    toArabicDigits: (Int) -> String,
+    onCardClick: () -> Unit,
+    onRefreshClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 2.dp)
+            .testTag("hijri_calendar_card")
+            .clickable(onClick = onCardClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.28f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Hijri Day Emblem Badge
+            Surface(
+                modifier = Modifier.size(52.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.primary
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = toArabicDigits(state.hijriDay),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        lineHeight = 22.sp
+                    )
+                    Text(
+                        text = "هـ",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
+                        lineHeight = 11.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarMonth,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = "التقويم الهجري",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    val badgeText = when {
+                        state.isManualAdjusted -> "تعديل يدوي"
+                        state.isCriticalWindow -> "تحقق الهلال"
+                        else -> null
+                    }
+                    if (badgeText != null) {
+                        val badgeContainer = if (state.isManualAdjusted) {
+                            MaterialTheme.colorScheme.tertiaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        }
+                        val badgeContent = if (state.isManualAdjusted) {
+                            MaterialTheme.colorScheme.onTertiaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onPrimary
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = badgeContainer
+                        ) {
+                            Text(
+                                text = badgeText,
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = badgeContent,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+
+                val dayPrefix = if (state.dayName.isNotBlank()) "${state.dayName} • " else ""
+                Text(
+                    text = "$dayPrefix${toArabicDigits(state.hijriDay)} ${state.hijriMonthName} ${toArabicDigits(state.hijriYear)} هـ",
+                    fontSize = 15.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                val sourceSuffix = if (state.sourceLabel.isNotBlank()) " • ${state.sourceLabel}" else ""
+                Text(
+                    text = "${state.gregorianDateFormatted} م$sourceSuffix",
+                    fontSize = 11.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            IconButton(
+                onClick = onRefreshClick,
+                enabled = !state.isRefreshing,
+                modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .testTag("hijri_refresh_button")
+            ) {
+                if (state.isRefreshing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "تحديث التقويم الهجري",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+

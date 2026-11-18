@@ -6,6 +6,8 @@ object NotificationSettingsManager {
     private const val PREF_NAME = "quran_notification_prefs"
     private const val KEY_NOTIFICATIONS_ENABLED = "notifications_enabled"
     private const val KEY_NOTIFICATIONS_PER_HOUR = "notifications_per_hour"
+    private const val KEY_LAST_NOTIFICATION_SHOWN_MILLIS = "last_notification_shown_millis"
+    private const val KEY_NEXT_ALARM_MILLIS = "next_alarm_millis"
 
     fun areNotificationsEnabled(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -15,6 +17,26 @@ object NotificationSettingsManager {
     fun setNotificationsEnabled(context: Context, enabled: Boolean) {
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         prefs.edit().putBoolean(KEY_NOTIFICATIONS_ENABLED, enabled).apply()
+    }
+
+    fun recordNotificationShown(context: Context, timeMillis: Long = System.currentTimeMillis()) {
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putLong(KEY_LAST_NOTIFICATION_SHOWN_MILLIS, timeMillis).apply()
+    }
+
+    fun getLastNotificationShownMillis(context: Context): Long {
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        return prefs.getLong(KEY_LAST_NOTIFICATION_SHOWN_MILLIS, 0L)
+    }
+
+    fun setNextAlarmMillis(context: Context, timeMillis: Long) {
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putLong(KEY_NEXT_ALARM_MILLIS, timeMillis).apply()
+    }
+
+    fun getNextAlarmMillis(context: Context): Long {
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        return prefs.getLong(KEY_NEXT_ALARM_MILLIS, 0L)
     }
 
     /**

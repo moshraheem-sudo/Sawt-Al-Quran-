@@ -1,14 +1,8 @@
 package com.example
 
 import androidx.compose.runtime.collectAsState
-import androidx.work.OneTimeWorkRequestBuilder
 import com.example.data.local.NotificationSettingsManager
 import com.example.notification.NotificationScheduler
-
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.WorkManager
-import java.util.concurrent.TimeUnit
-import com.example.worker.AyahWorker
 import android.Manifest
 import android.os.Build
 import android.content.pm.PackageManager
@@ -43,8 +37,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -75,6 +67,7 @@ class MainActivity : ComponentActivity() {
     private val audioPlayerManager = AudioPlayerManager()
 
     private val pendingNavigation = MutableStateFlow<String?>(null)
+    private val pendingOpenSettings = MutableStateFlow(false)
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -83,6 +76,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun checkIntentForNavigation(intent: Intent?) {
+        val openSettings = intent?.getBooleanExtra("open_settings", false) ?: false
+        if (openSettings) {
+            pendingOpenSettings.value = true
+            intent?.removeExtra("open_settings")
+        }
+
         val surahId = intent?.getIntExtra("open_surah_id", -1) ?: -1
         val ayahNumber = intent?.getIntExtra("open_ayah_number", -1) ?: -1
         val autoPlay = intent?.getBooleanExtra("auto_play_ayah", false) ?: false
@@ -132,7 +131,9 @@ class MainActivity : ComponentActivity() {
                         val permissionLauncher = rememberLauncherForActivityResult(
                             ActivityResultContracts.RequestPermission()
                         ) { isGranted ->
-                            // Optional: Handle permission granted/denied
+                            if (isGranted && NotificationSettingsManager.areNotificationsEnabled(this@MainActivity)) {
+                                NotificationScheduler.schedule(this@MainActivity, forceWorkUpdate = true)
+                            }
                         }
                         LaunchedEffect(Unit) {
                             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -148,51 +149,11 @@ class MainActivity : ComponentActivity() {
                         checkIntentForNavigation(intent)
                     }
 
-                    // Observe pending navigation
-                    // Update checking on startup
-
-                    var quranUpdateInfo by remember { mutableStateOf<AppReleaseInfo?>(null) }
-
-                    var showUpdateDialog by remember { mutableStateOf(false) }
-
-
-
-                    LaunchedEffect(Unit) {
-
-                        val result = AppUpdateManager.checkQuranUpdate()
-
-                        val info = result.getOrNull()
-
-                        if (info != null && info.isNewerAvailable && !AppUpdateManager.isQuranVersionPostponed(context, info.tagName)) {
-
-                            quranUpdateInfo = info
-
-                            showUpdateDialog = true
-
-                        }
-
-                    }
-
-
-
-                    if (showUpdateDialog && quranUpdateInfo != null) {
-
-                        AppUpdateDialog(
-
-                            releaseInfo = quranUpdateInfo!!,
-
-                            onDismiss = { showUpdateDialog = false },
-
-                            onPostpone = { 
-
-                                AppUpdateManager.postponeQuranVersion(context, quranUpdateInfo!!.tagName)
-
-                                showUpdateDialog = false
-
-                            }
-
+                    val openSettingsFromNotif by pendingOpenSettings.collectAsState()
+                    if (openSettingsFromNotif) {
+                        com.example.ui.screens.settings.SettingsDialog(
+                            onDismiss = { pendingOpenSettings.value = false }
                         )
-
                     }
 
                     val pendingRoute by pendingNavigation.collectAsState(initial = null)
@@ -297,41 +258,10 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     ) { innerPadding ->
-                        var totalDragAmount by remember { mutableFloatStateOf(0f) }
-
                         NavHost(
                             navController = navController, 
                             startDestination = "home",
-                            modifier = Modifier
-                                .padding(innerPadding)
-                                .pointerInput(currentRoute) {
-                                    detectHorizontalDragGestures(
-                                        onDragStart = { totalDragAmount = 0f },
-                                        onHorizontalDrag = { change, dragAmount ->
-                                            change.consume()
-                                            totalDragAmount += dragAmount
-                                        },
-                                        onDragEnd = {
-                                            if (kotlin.math.abs(totalDragAmount) > 80f) {
-                                                if (currentRoute != null && (currentRoute.startsWith("reader") || currentRoute.startsWith("reciter_detail"))) {
-                                                    navController.popBackStack()
-                                                } else if (currentRoute == "home" && totalDragAmount < -80f) {
-                                                    navController.navigate("reciters") {
-                                                        popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                                        launchSingleTop = true
-                                                        restoreState = true
-                                                    }
-                                                } else if (currentRoute == "reciters" && totalDragAmount > 80f) {
-                                                    navController.navigate("home") {
-                                                        popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                                        launchSingleTop = true
-                                                        restoreState = true
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    )
-                                }
+                            modifier = Modifier.padding(innerPadding)
                         ) {
                             composable("home") {
                                 val homeViewModel: HomeViewModel = viewModel(
@@ -419,9 +349,7 @@ class MainActivity : ComponentActivity() {
                                 ReciterDetailScreen(
                                     reciterId = reciterId,
                                     onBack = { navController.popBackStack() },
-                                    onPlaySurah = { url, title, surahId ->
-                                        PlayerManager.play(url, title)
-                                    }
+                                    onPlaySurah = { _, _, _ -> }
                                 )
                             }
                         }

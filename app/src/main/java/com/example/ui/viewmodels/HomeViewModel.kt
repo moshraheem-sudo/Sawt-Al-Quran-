@@ -38,11 +38,37 @@ class HomeViewModel(private val repository: QuranRepository) : ViewModel() {
     private val _isAyahLoopPaused = MutableStateFlow(false)
     val isAyahLoopPaused: StateFlow<Boolean> = _isAyahLoopPaused.asStateFlow()
 
+    private val _isContinuousRandomListening = MutableStateFlow(false)
+    val isContinuousRandomListening: StateFlow<Boolean> = _isContinuousRandomListening.asStateFlow()
+
     fun pauseRandomAyahLoop() {
         _isAyahLoopPaused.value = true
     }
 
     fun resumeRandomAyahLoop() {
+        _isAyahLoopPaused.value = false
+    }
+
+    fun startContinuousRandomListening(
+        surahId: Int,
+        ayahNumber: Int,
+        audioManager: com.example.audio.AudioPlayerManager?
+    ) {
+        _isContinuousRandomListening.value = true
+        _isAyahLoopPaused.value = true
+        audioManager?.playAyah(
+            surahId = surahId,
+            ayahNumber = ayahNumber,
+            continuous = false,
+            onCompletion = {
+                playNextRandomAyah(audioManager)
+            }
+        )
+    }
+
+    fun stopContinuousRandomListening(audioManager: com.example.audio.AudioPlayerManager?) {
+        _isContinuousRandomListening.value = false
+        audioManager?.stop()
         _isAyahLoopPaused.value = false
     }
 
@@ -88,7 +114,7 @@ class HomeViewModel(private val repository: QuranRepository) : ViewModel() {
             kotlinx.coroutines.delay(2000L)
             
             // إذا تم إيقاف الاستماع أثناء الانتظار، نتوقف
-            if (!_isAyahLoopPaused.value) return@launch
+            if (!_isContinuousRandomListening.value) return@launch
 
             val ayah = repository.getRandomAyah()
             if (ayah != null) {
@@ -96,6 +122,7 @@ class HomeViewModel(private val repository: QuranRepository) : ViewModel() {
                 _randomAyahSurahName.value = repository.getSurahNameById(ayah.surahId) ?: ""
                 
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    if (!_isContinuousRandomListening.value) return@withContext
                     audioManager?.playAyah(
                         surahId = ayah.surahId,
                         ayahNumber = ayah.ayahNumber,
@@ -112,7 +139,7 @@ class HomeViewModel(private val repository: QuranRepository) : ViewModel() {
     private fun startRandomAyahLoop() {
         viewModelScope.launch(Dispatchers.IO) {
             while (true) {
-                if (_isAyahLoopPaused.value) {
+                if (_isAyahLoopPaused.value || _isContinuousRandomListening.value) {
                     kotlinx.coroutines.delay(1000L)
                     continue
                 }

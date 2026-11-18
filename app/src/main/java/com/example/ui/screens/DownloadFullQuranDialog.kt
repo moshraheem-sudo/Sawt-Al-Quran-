@@ -67,7 +67,7 @@ fun DownloadFullQuranDialog(onDismiss: () -> Unit) {
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
                     LinearProgressIndicator(
-                        progress = p.currentSurah / p.totalSurahs.toFloat(),
+                        progress = { p.currentSurah / p.totalSurahs.toFloat() },
                         modifier = Modifier.fillMaxWidth().height(8.dp),
                         color = if (p.isPaused) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                     )

@@ -72,13 +72,26 @@ object QuranAudioDownloader {
                         )
                         
                         if (!destFile.exists() || destFile.length() == 0L) {
+                            val tmpFile = File(audioDir, "$surahStr$ayahStr.tmp")
                             val urlString = "https://everyayah.com/data/${reciter.path}/$surahStr$ayahStr.mp3"
-                            val conn = URL(urlString).openConnection()
+                            val conn = (URL(urlString).openConnection() as java.net.HttpURLConnection).apply {
+                                connectTimeout = 10000
+                                readTimeout = 15000
+                            }
                             conn.connect()
-                            conn.getInputStream().use { input ->
-                                destFile.outputStream().use { output ->
-                                    input.copyTo(output)
+                            try {
+                                conn.inputStream.use { input ->
+                                    tmpFile.outputStream().use { output ->
+                                        input.copyTo(output)
+                                    }
                                 }
+                                if (!isCancelled && !isPaused && tmpFile.length() > 0L) {
+                                    tmpFile.renameTo(destFile)
+                                } else {
+                                    tmpFile.delete()
+                                }
+                            } finally {
+                                conn.disconnect()
                             }
                         }
                     }

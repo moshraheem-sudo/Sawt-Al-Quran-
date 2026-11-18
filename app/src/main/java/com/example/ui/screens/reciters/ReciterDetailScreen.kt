@@ -803,7 +803,7 @@ object GlobalDownloadManager {
                             var count: Int
 
                             while (input.read(buffer).also { count = it } != -1) {
-                                if (batchJob?.isCancelled == true) {
+                                if (!kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]!!.isActive) {
                                     output.flush()
                                     output.close()
                                     input.close()
@@ -825,8 +825,9 @@ object GlobalDownloadManager {
                             output.flush()
                             output.close()
                             input.close()
+                            connection.disconnect()
 
-                            if (batchJob?.isCancelled == true) {
+                            if (!kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]!!.isActive) {
                                 destFile.delete()
                                 break
                             }
@@ -839,7 +840,12 @@ object GlobalDownloadManager {
                                 downloadedCount = newDownloadedCount,
                                 downloadedKeys = initialDownloaded.toSet()
                             ))
+                        } else {
+                            connection.disconnect()
                         }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        if (destFile.exists()) destFile.delete()
+                        throw e
                     } catch (e: Exception) {
                         if (destFile.exists() && destFile.length() == 0L) {
                             destFile.delete()
@@ -856,6 +862,8 @@ object GlobalDownloadManager {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context.applicationContext, "تم اكتمال تنزيل المصحف الشريف بنجاح 🎉", Toast.LENGTH_LONG).show()
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                _batchState.value = _batchState.value - key
             } catch (e: Exception) {
                 val sState = _batchState.value[key] ?: BatchDownloadState()
                 _batchState.value = _batchState.value + (key to sState.copy(isDownloading = false))
@@ -1004,6 +1012,14 @@ class ReciterDetailViewModel : ViewModel() {
                     }
                 }
                 val distinctStyles = styles.distinctBy { it.name }
+                sharedPrefs?.edit()?.apply {
+                    putString("reciter_name_$reciterId", name)
+                    distinctStyles.forEach { st ->
+                        putString("style_name_${st.id}", st.name)
+                        putString("style_server_${st.id}", st.server)
+                    }
+                    apply()
+                }
                 _state.value = _state.value.copy(
                     isLoading = false,
                     reciterName = name,

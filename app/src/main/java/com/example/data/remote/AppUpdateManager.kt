@@ -1,17 +1,21 @@
 package com.example.data.remote
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.example.R
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -48,9 +52,10 @@ sealed class DownloadState {
 object AppUpdateManager {
     const val QURAN_APP_NAME = "صوت القرآن"
     val QURAN_CURRENT_VERSION = "v" + com.example.BuildConfig.VERSION_NAME
+    const val QURAN_REPO_URL = "https://github.com/moshraheem-sudo/Sawt-Al-Quran-"
     const val QURAN_CHECK_API = "https://api.github.com/repos/moshraheem-sudo/Sawt-Al-Quran-/releases/latest"
     const val QURAN_RELEASE_PAGE = "https://github.com/moshraheem-sudo/Sawt-Al-Quran-/releases/latest"
-    const val QURAN_DIRECT_APK = "https://github.com/moshraheem-sudo/Sawt-Al-Quran-/releases/latest/download/app-release.apk"
+    val QURAN_DIRECT_APK = "https://github.com/moshraheem-sudo/Sawt-Al-Quran-/releases/latest/download/Sawt_AL-Quran_v${com.example.BuildConfig.VERSION_NAME}.apk"
 
     const val NOUR_APP_NAME = "نور العترة"
     const val NOUR_CURRENT_VERSION = "v1.0.0"
@@ -124,7 +129,7 @@ object AppUpdateManager {
                 }
                 val htmlUrl = json.optString("html_url", QURAN_RELEASE_PAGE)
 
-                var downloadUrl = QURAN_DIRECT_APK
+                var downloadUrl = ""
                 val assets = json.optJSONArray("assets")
                 if (assets != null && assets.length() > 0) {
                     for (i in 0 until assets.length()) {
@@ -135,6 +140,10 @@ object AppUpdateManager {
                             break
                         }
                     }
+                }
+                if (downloadUrl.isEmpty()) {
+                    val cleanTag = tagName.trim().removePrefix("v").removePrefix("V")
+                    downloadUrl = "https://github.com/moshraheem-sudo/Sawt-Al-Quran-/releases/download/$tagName/Sawt_AL-Quran_v$cleanTag.apk"
                 }
 
                 val isNewer = isVersionNewer(tagName, QURAN_CURRENT_VERSION)
@@ -268,7 +277,11 @@ object AppUpdateManager {
             builder.setContentIntent(pendingIntent)
         }
 
-        notificationManager.notify(1002, builder.build())
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationManager.notify(1003, builder.build())
+        }
     }
 
     private fun isVersionNewer(newVer: String, currentVer: String): Boolean {
@@ -324,40 +337,44 @@ object AppUpdateManager {
                 val apkFile = File(updatesDir, fileName)
                 if (apkFile.exists()) apkFile.delete()
 
-                val inputStream: InputStream = body.byteStream()
-                val outputStream = FileOutputStream(apkFile)
+                body.byteStream().use { inputStream ->
+                    FileOutputStream(apkFile).use { outputStream ->
+                        val buffer = ByteArray(8192)
+                        var totalBytesRead = 0L
+                        val startTime = System.currentTimeMillis()
+                        var lastProgressTime = System.currentTimeMillis()
 
-                val buffer = ByteArray(8192)
-                var bytesRead: Int
-                var totalBytesRead = 0L
-                val startTime = System.currentTimeMillis()
-                var lastProgressTime = System.currentTimeMillis()
+                        while (isActive) {
+                            val bytesRead = inputStream.read(buffer)
+                            if (bytesRead == -1) break
+                            outputStream.write(buffer, 0, bytesRead)
+                            totalBytesRead += bytesRead
 
-                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                    outputStream.write(buffer, 0, bytesRead)
-                    totalBytesRead += bytesRead
+                            val currentTime = System.currentTimeMillis()
+                            if (currentTime - lastProgressTime > 120 || (totalBytes > 0 && totalBytesRead == totalBytes)) {
+                                lastProgressTime = currentTime
+                                val timeDiffSec = (currentTime - startTime) / 1000f
+                                val speedMBs = if (timeDiffSec > 0) (totalBytesRead / (1024f * 1024f)) / timeDiffSec else 0f
+                                val progressPercent = if (totalBytes > 0) ((totalBytesRead * 100) / totalBytes).toInt() else 0
 
-                    val currentTime = System.currentTimeMillis()
-                    if (currentTime - lastProgressTime > 120 || (totalBytes > 0 && totalBytesRead == totalBytes)) {
-                        lastProgressTime = currentTime
-                        val timeDiffSec = (currentTime - startTime) / 1000f
-                        val speedMBs = if (timeDiffSec > 0) (totalBytesRead / (1024f * 1024f)) / timeDiffSec else 0f
-                        val progressPercent = if (totalBytes > 0) ((totalBytesRead * 100) / totalBytes).toInt() else 0
-
-                        onProgress(
-                            DownloadState.Progress(
-                                downloadedBytes = totalBytesRead,
-                                totalBytes = totalBytes,
-                                progressPercent = progressPercent,
-                                speedMBs = speedMBs
-                            )
-                        )
+                                onProgress(
+                                    DownloadState.Progress(
+                                        downloadedBytes = totalBytesRead,
+                                        totalBytes = totalBytes,
+                                        progressPercent = progressPercent,
+                                        speedMBs = speedMBs
+                                    )
+                                )
+                            }
+                        }
+                        outputStream.flush()
                     }
                 }
 
-                outputStream.flush()
-                outputStream.close()
-                inputStream.close()
+                if (!isActive) {
+                    if (apkFile.exists()) apkFile.delete()
+                    return@withContext
+                }
 
                 onProgress(DownloadState.Completed(apkFile))
             }

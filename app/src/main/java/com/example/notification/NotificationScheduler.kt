@@ -17,32 +17,63 @@ object NotificationScheduler {
     const val ACTION_TRIGGER_AYAH_NOTIFICATION = "com.example.ACTION_TRIGGER_AYAH_NOTIFICATION"
     private const val ALARM_REQUEST_CODE = 4501
 
-    fun schedule(context: Context) {
-        if (!NotificationSettingsManager.areNotificationsEnabled(context)) {
-            cancel(context)
+    fun schedule(context: Context, forceWorkUpdate: Boolean = false) {
+        val appContext = context.applicationContext
+        if (!NotificationSettingsManager.areNotificationsEnabled(appContext)) {
+            cancel(appContext)
             return
         }
 
-        scheduleNextAlarm(context)
-        scheduleWorkManagerFallback(context)
+        scheduleNextAlarm(appContext)
+        scheduleWorkManagerFallback(appContext, forceUpdate = forceWorkUpdate)
+    }
+
+    fun ensureAlarmScheduledIfNeeded(context: Context) {
+        val appContext = context.applicationContext
+        if (!NotificationSettingsManager.areNotificationsEnabled(appContext)) {
+            return
+        }
+
+        val intent = Intent(appContext, AyahAlarmReceiver::class.java).apply {
+            action = ACTION_TRIGGER_AYAH_NOTIFICATION
+        }
+        val existingPendingIntent = PendingIntent.getBroadcast(
+            appContext,
+            ALARM_REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val now = System.currentTimeMillis()
+        val nextAlarmMillis = NotificationSettingsManager.getNextAlarmMillis(appContext)
+        val intervalMs = NotificationSettingsManager.getIntervalMinutes(appContext) * 60_000L
+
+        if (existingPendingIntent == null ||
+            nextAlarmMillis <= now ||
+            (nextAlarmMillis - now) > (intervalMs + 120_000L)
+        ) {
+            scheduleNextAlarm(appContext)
+        }
     }
 
     fun scheduleNextAlarm(context: Context) {
-        if (!NotificationSettingsManager.areNotificationsEnabled(context)) {
-            cancel(context)
+        val appContext = context.applicationContext
+        if (!NotificationSettingsManager.areNotificationsEnabled(appContext)) {
+            cancel(appContext)
             return
         }
 
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        val intervalMinutes = NotificationSettingsManager.getIntervalMinutes(context)
+        val alarmManager = appContext.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val intervalMinutes = NotificationSettingsManager.getIntervalMinutes(appContext)
         val triggerAtMillis = System.currentTimeMillis() + (intervalMinutes * 60 * 1000L)
+        NotificationSettingsManager.setNextAlarmMillis(appContext, triggerAtMillis)
 
-        val intent = Intent(context, AyahAlarmReceiver::class.java).apply {
+        val intent = Intent(appContext, AyahAlarmReceiver::class.java).apply {
             action = ACTION_TRIGGER_AYAH_NOTIFICATION
         }
 
         val pendingIntent = PendingIntent.getBroadcast(
-            context,
+            appContext,
             ALARM_REQUEST_CODE,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -92,13 +123,18 @@ object NotificationScheduler {
         }
     }
 
-    private fun scheduleWorkManagerFallback(context: Context) {
+    private fun scheduleWorkManagerFallback(context: Context, forceUpdate: Boolean = false) {
         try {
-            // WorkManager minimum periodic interval is 15 minutes, serving as a reliable secondary fallback
+            // WorkManager minimum periodic interval is 15 minutes, serving as a reliable watchdog across reboots
             val periodicWork = PeriodicWorkRequestBuilder<AyahWorker>(15, TimeUnit.MINUTES).build()
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            val policy = if (forceUpdate) {
+                ExistingPeriodicWorkPolicy.UPDATE
+            } else {
+                ExistingPeriodicWorkPolicy.KEEP
+            }
+            WorkManager.getInstance(context.applicationContext).enqueueUniquePeriodicWork(
                 "AyahNotificationWork",
-                ExistingPeriodicWorkPolicy.UPDATE,
+                policy,
                 periodicWork
             )
         } catch (e: Exception) {
@@ -107,13 +143,15 @@ object NotificationScheduler {
     }
 
     fun cancel(context: Context) {
+        val appContext = context.applicationContext
         try {
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
-            val intent = Intent(context, AyahAlarmReceiver::class.java).apply {
+            NotificationSettingsManager.setNextAlarmMillis(appContext, 0L)
+            val alarmManager = appContext.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+            val intent = Intent(appContext, AyahAlarmReceiver::class.java).apply {
                 action = ACTION_TRIGGER_AYAH_NOTIFICATION
             }
             val pendingIntent = PendingIntent.getBroadcast(
-                context,
+                appContext,
                 ALARM_REQUEST_CODE,
                 intent,
                 PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
@@ -122,7 +160,7 @@ object NotificationScheduler {
                 alarmManager.cancel(pendingIntent)
                 pendingIntent.cancel()
             }
-            WorkManager.getInstance(context).cancelUniqueWork("AyahNotificationWork")
+            WorkManager.getInstance(appContext).cancelUniqueWork("AyahNotificationWork")
         } catch (e: Exception) {
             e.printStackTrace()
         }

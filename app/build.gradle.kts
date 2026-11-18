@@ -14,11 +14,11 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.aistudio.quran.abxzw1.mbsdtt"
+    applicationId = "com.aistudio.quran.abxzw1.rmidfk"
     minSdk = 24
     targetSdk = 36
-    versionCode = 32000
-    versionName = "3.20.0"
+    versionCode = 34000
+    versionName = "3.40.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -77,7 +77,7 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.W
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
+  implementation("androidx.work:work-runtime-ktx:2.9.0")
   implementation("androidx.media:media:1.7.0")
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))

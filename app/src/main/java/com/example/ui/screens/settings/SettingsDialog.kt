@@ -1,10 +1,20 @@
 package com.example.ui.screens.settings
 
+import android.Manifest
+import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
+import android.os.PowerManager
+import android.provider.Settings
 import android.widget.Toast
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -28,9 +38,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.local.HijriCalendarManager
 import com.example.data.local.NotificationSettingsManager
 import com.example.notification.NotificationScheduler
 import com.example.notification.AyahNotificationHelper
+import androidx.compose.ui.platform.testTag
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
@@ -61,10 +74,18 @@ enum class UpdateStatus {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsDialog(
+    initialExpandHijri: Boolean = false,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    // Hijri Calendar State
+    var isHijriExpanded by remember { mutableStateOf(initialExpandHijri) }
+    val hijriState by HijriCalendarManager.state.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) {
+        HijriCalendarManager.init(context)
+    }
 
     // App Theme State
     var isThemeCardExpanded by remember { mutableStateOf(false) }
@@ -88,6 +109,46 @@ fun SettingsDialog(
     var isNotificationsExpanded by remember { mutableStateOf(false) }
     var notificationsEnabled by remember { mutableStateOf(NotificationSettingsManager.areNotificationsEnabled(context)) }
     var notificationsPerHour by remember { mutableIntStateOf(NotificationSettingsManager.getNotificationsPerHour(context)) }
+
+    var hasPostNotifPermission by remember {
+        mutableStateOf(
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    var canScheduleExactAlarm by remember {
+        mutableStateOf(
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                (context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager)?.canScheduleExactAlarms() == true
+        )
+    }
+    var isIgnoringBatteryOptimizations by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isIgnoringBatteryOptimizations(context.packageName) == true
+            } else true
+        )
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasPostNotifPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                canScheduleExactAlarm = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                    (context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager)?.canScheduleExactAlarms() == true
+                isIgnoringBatteryOptimizations = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isIgnoringBatteryOptimizations(context.packageName) == true
+                } else true
+                if (NotificationSettingsManager.areNotificationsEnabled(context)) {
+                    NotificationScheduler.ensureAlarmScheduledIfNeeded(context)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // 2. Nour Al-Itrah App Update State
     var nourUpcomingVersion by remember { mutableStateOf("") }
@@ -164,6 +225,279 @@ fun SettingsDialog(
                             )
                         }
                     }
+                    // HIJRI CALENDAR CARD
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { isHijriExpanded = !isHijriExpanded }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.CalendarMonth,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = "التقويم الهجري",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer
+                                    ) {
+                                        Text(
+                                            text = "${HijriCalendarManager.toArabicNumerals(hijriState.hijriDay.toString())} ${hijriState.hijriMonthName}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = if (isHijriExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                        contentDescription = if (isHijriExpanded) "طي" else "توسيع",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            AnimatedVisibility(visible = isHijriExpanded) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(14.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            val dayText = HijriCalendarManager.toArabicNumerals(hijriState.hijriDay.toString())
+                                            val yearText = HijriCalendarManager.toArabicNumerals(hijriState.hijriYear.toString())
+                                            val dayPrefix = if (hijriState.dayName.isNotBlank()) "${hijriState.dayName} • " else ""
+                                            Text(
+                                                text = "$dayPrefix$dayText ${hijriState.hijriMonthName} $yearText هـ",
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "${hijriState.gregorianDateFormatted} م",
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            val statusDesc = buildString {
+                                                append(
+                                                    when {
+                                                        hijriState.isManualAdjusted -> "تعديل يدوي (${if (hijriState.manualOffsetDays > 0) "+" else ""}${HijriCalendarManager.toArabicNumerals(hijriState.manualOffsetDays.toString())} يوم)"
+                                                        hijriState.isCriticalWindow -> "وضع تحقق الهلال التلقائي (أيام ٢٨–٣٠ وأول الشهر)"
+                                                        hijriState.isSyncedFromRemote -> "مُحدّث تلقائياً من الرابط"
+                                                        else -> "حساب محلي (بانتظار التحديث)"
+                                                    }
+                                                )
+                                                if (hijriState.sourceLabel.isNotBlank()) {
+                                                    append(" • ${hijriState.sourceLabel}")
+                                                }
+                                            }
+                                            Text(
+                                                text = statusDesc,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "آخر تحديث: ${HijriCalendarManager.formatLastFetchedRelative(hijriState.lastFetchedMillis)}",
+                                                fontSize = 10.5.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                                    Text(
+                                        text = "تعديل التقويم يدوياً (تقديم أو تأخير بالأيام):",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        FilledTonalIconButton(
+                                            onClick = {
+                                                HijriCalendarManager.adjustManualOffsetBy(context, -1)
+                                            },
+                                            enabled = hijriState.manualOffsetDays > -5,
+                                            modifier = Modifier
+                                                .minimumInteractiveComponentSize()
+                                                .testTag("hijri_minus_day_button")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Remove,
+                                                contentDescription = "إنقاص يوم"
+                                            )
+                                        }
+
+                                        Surface(
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                                        ) {
+                                            val offsetLabel = when {
+                                                hijriState.manualOffsetDays == 0 -> "تلقائي (٠ يوم)"
+                                                hijriState.manualOffsetDays > 0 -> "+${HijriCalendarManager.toArabicNumerals(hijriState.manualOffsetDays.toString())} يوم"
+                                                else -> "${HijriCalendarManager.toArabicNumerals(hijriState.manualOffsetDays.toString())} يوم"
+                                            }
+                                            Text(
+                                                text = offsetLabel,
+                                                modifier = Modifier.padding(vertical = 12.dp),
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+
+                                        FilledTonalIconButton(
+                                            onClick = {
+                                                HijriCalendarManager.adjustManualOffsetBy(context, +1)
+                                            },
+                                            enabled = hijriState.manualOffsetDays < 5,
+                                            modifier = Modifier
+                                                .minimumInteractiveComponentSize()
+                                                .testTag("hijri_plus_day_button")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Add,
+                                                contentDescription = "زيادة يوم"
+                                            )
+                                        }
+                                    }
+
+                                    if (hijriState.manualOffsetDays != 0) {
+                                        TextButton(
+                                            onClick = {
+                                                HijriCalendarManager.setManualOffset(context, 0)
+                                                Toast.makeText(context, "تمت استعادة التقويم التلقائي", Toast.LENGTH_SHORT).show()
+                                            },
+                                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                                        ) {
+                                            Text(
+                                                text = "إرجاع للتقويم التلقائي (٠)",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                val result = HijriCalendarManager.refreshFromRemote(
+                                                    context = context,
+                                                    force = true,
+                                                    resetManualOffset = true
+                                                )
+                                                if (result.isSuccess) {
+                                                    Toast.makeText(context, "✅ تم تحديث التقويم الهجري من الرابط", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(context, "تعذر التحديث من الرابط، تحقق من الإنترنت", Toast.LENGTH_LONG).show()
+                                                }
+                                            }
+                                        },
+                                        enabled = !hijriState.isRefreshing,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("hijri_update_from_url_button"),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    ) {
+                                        if (hijriState.isRefreshing) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                strokeWidth = 2.dp,
+                                                color = MaterialTheme.colorScheme.onPrimary
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("جاري التحديث من الرابط...", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Default.Refresh,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("تحديث التقويم الآن عبر الرابط", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        }
+                                    }
+
+                                    hijriState.lastSyncError?.let { err ->
+                                        Text(
+                                            text = err,
+                                            fontSize = 11.5.sp,
+                                            color = MaterialTheme.colorScheme.error,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = "يتم تحديث التقويم تلقائياً وبشكل دائم من الرابط المعتمد، مع تكثيف التحقق التلقائي في آخر ٣ أيام من الشهر وأول يوم بعد الثلاثين لضمان دقة رؤية الهلال.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            lineHeight = 18.sp,
+                                            modifier = Modifier.padding(10.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // NOTIFICATIONS CARD
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -238,7 +572,7 @@ fun SettingsDialog(
                                                 notificationsEnabled = enabled
                                                 NotificationSettingsManager.setNotificationsEnabled(context, enabled)
                                                 if (enabled) {
-                                                    NotificationScheduler.schedule(context)
+                                                    NotificationScheduler.schedule(context, forceWorkUpdate = true)
                                                     Toast.makeText(context, "تم تفعيل الإشعارات: ${NotificationSettingsManager.getFrequencyDescription(notificationsPerHour)}", Toast.LENGTH_SHORT).show()
                                                 } else {
                                                     NotificationScheduler.cancel(context)
@@ -293,7 +627,7 @@ fun SettingsDialog(
                                                 },
                                                 onValueChangeFinished = {
                                                     NotificationSettingsManager.setNotificationsPerHour(context, notificationsPerHour)
-                                                    NotificationScheduler.schedule(context)
+                                                    NotificationScheduler.schedule(context, forceWorkUpdate = true)
                                                     Toast.makeText(context, "تم حفظ الوتيرة: ${NotificationSettingsManager.getFrequencyDescription(notificationsPerHour)}", Toast.LENGTH_SHORT).show()
                                                 },
                                                 valueRange = 1f..20f,
@@ -355,7 +689,7 @@ fun SettingsDialog(
                                                         onClick = {
                                                             notificationsPerHour = firstPreset.first
                                                             NotificationSettingsManager.setNotificationsPerHour(context, firstPreset.first)
-                                                            NotificationScheduler.schedule(context)
+                                                            NotificationScheduler.schedule(context, forceWorkUpdate = true)
                                                             Toast.makeText(context, "تم اختيار: ${firstPreset.first} في الساعة (${firstPreset.second})", Toast.LENGTH_SHORT).show()
                                                         }
                                                     )
@@ -368,7 +702,7 @@ fun SettingsDialog(
                                                         onClick = {
                                                             notificationsPerHour = secondPreset.first
                                                             NotificationSettingsManager.setNotificationsPerHour(context, secondPreset.first)
-                                                            NotificationScheduler.schedule(context)
+                                                            NotificationScheduler.schedule(context, forceWorkUpdate = true)
                                                             Toast.makeText(context, "تم اختيار: ${secondPreset.first} في الساعة (${secondPreset.second})", Toast.LENGTH_SHORT).show()
                                                         }
                                                     )
@@ -399,29 +733,116 @@ fun SettingsDialog(
                                             Text("🔔 إرسال إشعار تجريبي فوري الآن", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                         }
 
-                                        // Background Reliability Note
+                                        // Background & Post-Reboot Reliability Controls
+                                        val needsAction = !hasPostNotifPermission || !canScheduleExactAlarm || !isIgnoringBatteryOptimizations
                                         Surface(
                                             shape = RoundedCornerShape(12.dp),
-                                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                                            color = if (needsAction) {
+                                                MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f)
+                                            } else {
+                                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
+                                            },
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (needsAction) MaterialTheme.colorScheme.tertiary.copy(alpha = 0.4f)
+                                                else MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                                            ),
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Row(
+                                            Column(
                                                 modifier = Modifier.padding(12.dp),
-                                                verticalAlignment = Alignment.CenterVertically
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.CheckCircle,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(10.dp))
-                                                Text(
-                                                    text = "تعمل الإشعارات في الخلفية وتستمر حتى عند إغلاق التطبيق أو بعد إعادة تشغيل الهاتف لضمان تذكيرك الدائم بآيات الله.",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                    lineHeight = 18.sp
-                                                )
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(
+                                                        imageVector = if (needsAction) Icons.Default.WarningAmber else Icons.Default.CheckCircle,
+                                                        contentDescription = null,
+                                                        tint = if (needsAction) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(
+                                                        text = if (needsAction) {
+                                                            "لضمان استمرار الإشعارات بعد إطفاء الهاتف وإعادة تشغيله، يُنصح بتفعيل الصلاحيات التالية:"
+                                                        } else {
+                                                            "تعمل الإشعارات بأعلى موثوقية في الخلفية وتستأنف تلقائياً بعد إطفاء الهاتف أو إعادة تشغيله."
+                                                        },
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                        lineHeight = 18.sp
+                                                    )
+                                                }
+
+                                                if (!hasPostNotifPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                    OutlinedButton(
+                                                        onClick = {
+                                                            val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                                                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                                            }
+                                                            runCatching { context.startActivity(intent) }
+                                                        },
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .testTag("open_notification_permission_button"),
+                                                        shape = RoundedCornerShape(10.dp)
+                                                    ) {
+                                                        Icon(Icons.Default.Notifications, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text("تفعيل إذن الإشعارات من النظام", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+
+                                                if (!canScheduleExactAlarm && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                                    OutlinedButton(
+                                                        onClick = {
+                                                            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                                                data = Uri.parse("package:${context.packageName}")
+                                                            }
+                                                            runCatching { context.startActivity(intent) }.onFailure {
+                                                                val fallback = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                                                    data = Uri.parse("package:${context.packageName}")
+                                                                }
+                                                                runCatching { context.startActivity(fallback) }
+                                                            }
+                                                        },
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .testTag("open_exact_alarm_settings_button"),
+                                                        shape = RoundedCornerShape(10.dp)
+                                                    ) {
+                                                        Icon(Icons.Default.Alarm, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text("السماح بالتنبيهات الدقيقة (المنبهات والتذكيرات)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+
+                                                if (!isIgnoringBatteryOptimizations && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                                    OutlinedButton(
+                                                        onClick = {
+                                                            val batteryIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                                            runCatching { context.startActivity(batteryIntent) }.onFailure {
+                                                                val appDetailsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                                                    data = Uri.parse("package:${context.packageName}")
+                                                                }
+                                                                runCatching { context.startActivity(appDetailsIntent) }
+                                                            }
+                                                            Toast.makeText(
+                                                                context,
+                                                                "اختر (صوت القرآن) ثم (بلا قيود) وفعّل التشغيل التلقائي إن وجد",
+                                                                Toast.LENGTH_LONG
+                                                            ).show()
+                                                        },
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .testTag("open_battery_optimization_settings_button"),
+                                                        shape = RoundedCornerShape(10.dp)
+                                                    ) {
+                                                        Icon(Icons.Default.BatterySaver, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text("استثناء من توفير البطارية (بلا قيود)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -779,7 +1200,8 @@ fun SettingsDialog(
                                                         quranDownloadedMB = 0f
 
                                                         val downloadUrl = quranUpdateInfo?.downloadUrl ?: AppUpdateManager.QURAN_DIRECT_APK
-                                                        val fileName = "SawtALQuran_v${quranUpcomingVersion}.apk"
+                                                        val cleanVersionTag = quranUpcomingVersion.trim().removePrefix("v").removePrefix("V")
+                                                        val fileName = "Sawt_AL-Quran_v$cleanVersionTag.apk"
 
                                                         AppUpdateManager.downloadApkFile(
                                                             context = context,
@@ -1453,6 +1875,39 @@ fun SettingsDialog(
                                             )
                                             Text(
                                                 text = "واتساب: 9647831452279+",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            try {
+                                                val intent = Intent(
+                                                    Intent.ACTION_VIEW,
+                                                    Uri.parse(AppUpdateManager.QURAN_REPO_URL)
+                                                )
+                                                context.startActivity(intent)
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "تعذر فتح رابط GitHub", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        modifier = Modifier.testTag("developer_github_repo_button"),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.OpenInNew,
+                                                contentDescription = "GitHub",
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = "مستودع التطبيق على GitHub",
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = FontWeight.Bold
                                             )

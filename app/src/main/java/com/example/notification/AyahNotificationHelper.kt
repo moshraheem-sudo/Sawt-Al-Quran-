@@ -1,13 +1,16 @@
 package com.example.notification
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.QuranApplication
 import com.example.R
@@ -56,16 +59,19 @@ object AyahNotificationHelper {
                 }
             }
 
-            displayNotification(context, ayahsList, surahName)
-            true
+            val posted = displayNotification(context, ayahsList, surahName)
+            if (posted && !isTest) {
+                NotificationSettingsManager.recordNotificationShown(context)
+            }
+            posted
         } catch (e: Exception) {
             e.printStackTrace()
             false
         }
     }
 
-    fun displayNotification(context: Context, ayahs: List<AyahEntity>, surahName: String) {
-        if (ayahs.isEmpty()) return
+    fun displayNotification(context: Context, ayahs: List<AyahEntity>, surahName: String): Boolean {
+        if (ayahs.isEmpty()) return false
         val firstAyah = ayahs.first()
         val lastAyah = ayahs.last()
         val surahId = firstAyah.surahId
@@ -160,6 +166,12 @@ object AyahNotificationHelper {
             .setAutoCancel(true)
             .build()
 
-        notificationManager.notify(NOTIFICATION_ID, notification)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationManager.notify(NOTIFICATION_ID, notification)
+            return true
+        }
+        return false
     }
 }

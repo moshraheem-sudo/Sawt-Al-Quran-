@@ -339,7 +339,7 @@ fun RecitersScreen(
                                     text = "🎙️ القراء المفضلون (${favReciters.size})",
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFE6C280),
+                                    color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(vertical = 8.dp)
                                 )
                             }
@@ -362,9 +362,10 @@ fun RecitersScreen(
                     ) {
                         Text(
                             text = "لا توجد سور محمّلة حالياً 💾\nيمكنك تحميل السور للاستماع إليها أوفلاين.",
-                            color = Color(0xFFC5B08A),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center,
                             modifier = Modifier.padding(24.dp)
                         )
                     }
@@ -397,10 +398,11 @@ fun RecitersScreen(
                                             .apply()
                                         Toast.makeText(context, "تمت إزالة السورة من المفضلة", Toast.LENGTH_SHORT).show()
                                     } else {
+                                        val savedServer = prefs.getString("style_server_${item.styleId}", "") ?: ""
                                         currentFavs.add(favKey)
                                         prefs.edit()
                                             .putStringSet("favorites", currentFavs)
-                                            .putString("${favKey}_metadata", "${item.reciterName}|${item.styleName}||${item.surahName}")
+                                            .putString("${favKey}_metadata", "${item.reciterName}|${item.styleName}|$savedServer|${item.surahName}")
                                             .apply()
                                         Toast.makeText(context, "تمت إضافة السورة للمفضلة", Toast.LENGTH_SHORT).show()
                                     }
@@ -415,6 +417,19 @@ fun RecitersScreen(
                                     Toast.makeText(
                                         context,
                                         "تم حذف سورة ${itemToDelete.surahName}",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                onDeleteAll = { itemsToDelete ->
+                                    itemsToDelete.forEach { item ->
+                                        if (item.file.exists()) {
+                                            item.file.delete()
+                                        }
+                                    }
+                                    downloadedItems = loadDownloadedItems(context)
+                                    Toast.makeText(
+                                        context,
+                                        "تم حذف جميع التلاوات المحملة للقارئ $reciterName",
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 }
@@ -433,7 +448,8 @@ fun DownloadedReciterCard(
     itemsForReciter: List<DownloadedItem>,
     favoritesSet: Set<String>,
     onToggleFavorite: (DownloadedItem) -> Unit,
-    onItemDelete: (DownloadedItem) -> Unit
+    onItemDelete: (DownloadedItem) -> Unit,
+    onDeleteAll: (List<DownloadedItem>) -> Unit
 ) {
     val context = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
@@ -499,12 +515,7 @@ fun DownloadedReciterCard(
                             text = { Text("هل أنت متأكد من حذف جميع الملفات المحملة لهذا القارئ؟") },
                             confirmButton = {
                                 TextButton(onClick = {
-                                    itemsForReciter.forEach { item ->
-                                        if (item.file.exists()) {
-                                            item.file.delete()
-                                        }
-                                        onItemDelete(item)
-                                    }
+                                    onDeleteAll(itemsForReciter)
                                     showDeleteDialog = false
                                 }) {
                                     Text("حذف", color = MaterialTheme.colorScheme.error)
@@ -1109,20 +1120,20 @@ fun loadFavoriteSurahs(context: Context): List<FavoriteSurahItem> {
                 if (mParts.size >= 4) {
                     reciterName = mParts[0]
                     styleName = mParts[1]
-                    server = mParts[2]
+                    server = mParts[2].ifEmpty { prefs.getString("style_server_$styleId", "") ?: "" }
                     surahName = mParts[3]
                 } else {
                     reciterName = prefs.getString("reciter_name_$rId", recitersMap[rId] ?: "قارئ #$rId") ?: "قارئ #$rId"
                     val defaultStyle = globalStyleMap[styleId] ?: "قراءة $styleId"
                     styleName = prefs.getString("style_name_$styleId", defaultStyle) ?: defaultStyle
-                    server = ""
+                    server = prefs.getString("style_server_$styleId", "") ?: ""
                     surahName = SURAH_NAMES.getOrNull(surahId - 1) ?: "سورة #$surahId"
                 }
             } else {
                 reciterName = prefs.getString("reciter_name_$rId", recitersMap[rId] ?: "قارئ #$rId") ?: "قارئ #$rId"
                 val defaultStyle = globalStyleMap[styleId] ?: "قراءة $styleId"
                 styleName = prefs.getString("style_name_$styleId", defaultStyle) ?: defaultStyle
-                server = ""
+                server = prefs.getString("style_server_$styleId", "") ?: ""
                 surahName = SURAH_NAMES.getOrNull(surahId - 1) ?: "سورة #$surahId"
             }
             
@@ -1384,7 +1395,7 @@ fun FavoriteSurahRowItem(
                                     progress = { downloadingProgress ?: 0f },
                                     modifier = Modifier.size(20.dp),
                                     strokeWidth = 2.dp,
-                                    color = Color(0xFFD4AF37)
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                                 Icon(
                                     imageVector = Icons.Default.Close,
@@ -1404,7 +1415,7 @@ fun FavoriteSurahRowItem(
                             Icon(
                                 imageVector = Icons.Default.Download,
                                 contentDescription = "تنزيل",
-                                tint = Color(0xFFC5B08A),
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp)
                             )
                         }

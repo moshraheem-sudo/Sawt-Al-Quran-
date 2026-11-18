@@ -22,11 +22,17 @@ interface KhatmaDao {
     @Query("SELECT * FROM khatma_progress ORDER BY juzNumber ASC")
     fun observeAllJuz(): Flow<List<KhatmaProgress>>
 
+    @Query("SELECT * FROM khatma_progress ORDER BY juzNumber ASC")
+    suspend fun getAllJuzList(): List<KhatmaProgress>
+
     @Query("SELECT * FROM khatma_progress WHERE juzNumber = :juz")
     suspend fun getJuz(juz: Int): KhatmaProgress?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(progress: KhatmaProgress)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<KhatmaProgress>)
 
     @Query("UPDATE khatma_progress SET lastReadPage = 0, progressPercent = 0, isCompleted = 0")
     suspend fun resetAll() // لبدء ختمة جديدة من الصفر

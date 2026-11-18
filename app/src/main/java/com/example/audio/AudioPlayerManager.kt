@@ -1,8 +1,10 @@
 package com.example.audio
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.content.Context
 import android.content.Intent
@@ -10,6 +12,7 @@ import android.media.MediaPlayer
 import android.os.Build
 import android.support.v4.media.session.MediaSessionCompat
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.example.data.local.LastReadManager
 import com.example.R
 
@@ -114,7 +117,11 @@ class AudioPlayerManager {
             if (AyahAudioService.instance != null) {
                 AyahAudioService.instance?.updateForegroundState(isPlaying, notification)
             } else {
-                notificationManager?.notify(NOTIFICATION_ID, notification)
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    notificationManager?.notify(NOTIFICATION_ID, notification)
+                }
             }
         }
     }
@@ -276,37 +283,42 @@ class AudioPlayerManager {
         }
 
         mediaPlayer?.release()
-        mediaPlayer = MediaPlayer().apply {
-            setDataSource(dataSource)
-            setOnPreparedListener { 
-                it.start() 
-            }
-            setOnCompletionListener {
-                if (isContinuousMode) {
-                    if (currentAyahNumber < maxAyahs) {
-                        currentAyahNumber++
-                        playCurrent()
-                    } else if (currentSurahId < 114) {
-                        currentSurahId++
-                        currentAyahNumber = 1
-                        maxAyahs = SURAH_AYAH_COUNTS[currentSurahId - 1]
-                        playCurrent()
+        try {
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(dataSource)
+                setOnPreparedListener {
+                    it.start()
+                }
+                setOnCompletionListener {
+                    if (isContinuousMode) {
+                        if (currentAyahNumber < maxAyahs) {
+                            currentAyahNumber++
+                            playCurrent()
+                        } else if (currentSurahId < 114) {
+                            currentSurahId++
+                            currentAyahNumber = 1
+                            maxAyahs = SURAH_AYAH_COUNTS[currentSurahId - 1]
+                            playCurrent()
+                        } else {
+                            val callback = onCompletionCallback
+                            stop()
+                            callback?.invoke()
+                        }
                     } else {
                         val callback = onCompletionCallback
                         stop()
                         callback?.invoke()
                     }
-                } else {
-                    val callback = onCompletionCallback
-                    stop()
-                    callback?.invoke()
                 }
+                setOnErrorListener { _, _, _ ->
+                    stop()
+                    true
+                }
+                prepareAsync()
             }
-            setOnErrorListener { _, _, _ ->
-                stop()
-                true
-            }
-            prepareAsync()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            stop()
         }
     }
 
@@ -326,10 +338,7 @@ class AudioPlayerManager {
         _currentPlayingAyah.value = null
         onCompletionCallback = null
         
-        AyahAudioService.instance?.let { service ->
-            service.stopForeground(true)
-            service.stopSelf()
-        }
+        AyahAudioService.instance?.stopServiceAndForeground()
         AyahAudioService.isRunning = false
         notificationManager?.cancel(NOTIFICATION_ID)
     }

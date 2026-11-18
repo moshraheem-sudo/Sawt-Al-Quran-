@@ -92,7 +92,7 @@ private val SURAH_NAMES_AR = listOf(
     "الفاتحة", "البقرة", "آل عمران", "النساء", "المائدة", "الأنعام", "الأعراف", "الأنفال", "التوبة", "يونس",
     "هود", "يوسف", "الرعد", "إبراهيم", "الحجر", "النحل", "الإسراء", "الكهف", "مريم", "طه",
     "الأنبياء", "الحج", "المؤمنون", "النور", "الفرقان", "الشعراء", "النمل", "القصص", "العنكبوت", "الروم",
-    "لقمان", "السجدة", "سبأ", "فاطر", "يس", "الصافات", "ص", "الزمر", "غافر", "فصلت",
+    "لقمان", "السجدة", "الأحزاب", "سبأ", "فاطر", "يس", "الصافات", "ص", "الزمر", "غافر", "فصلت",
     "الشورى", "الزخرف", "الدخان", "الجاثية", "الأحقاف", "محمد", "الفتح", "الحجرات", "ق", "الذاريات",
     "الطور", "النجم", "القمر", "الرحمن", "الواقعة", "الحديد", "المجادلة", "الحشر", "الممتحنة", "الصف",
     "الجمعة", "المنافقون", "التغابن", "الطلاق", "التحريم", "الملك", "القلم", "الحاقة", "المعارج", "نوح",
@@ -323,7 +323,7 @@ fun ReaderScreen(
                                     strokeWidth = 2.dp,
                                     color = MaterialTheme.colorScheme.primary
                                 )
-                                val pct = ((downloadProgress!!.downloadedCount.toFloat() / downloadProgress!!.totalAyahs) * 100).toInt()
+                                val pct = ((downloadProgress!!.downloadedCount.toFloat() / downloadProgress!!.totalAyahs.coerceAtLeast(1)) * 100).toInt()
                                 Text(
                                     text = "$pct%",
                                     fontSize = 11.sp,
@@ -426,6 +426,19 @@ fun ReaderScreen(
                         Icon(
                             imageVector = Icons.Default.ZoomOut,
                             contentDescription = "تصغير",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(3.dp))
+                    IconButton(
+                        onClick = { showGoToPageDialog = true },
+                        modifier = Modifier.size(34.dp),
+                        colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Numbers,
+                            contentDescription = "الانتقال إلى صفحة",
                             modifier = Modifier.size(18.dp),
                             tint = MaterialTheme.colorScheme.onSecondaryContainer
                         )
@@ -859,10 +872,22 @@ fun ReaderScreen(
                 onDismiss = { showGoToPageDialog = false },
                 onSelectPage = { targetSurah, targetPage ->
                     if (targetSurah == activeSurahId) {
-                        val pageOffset = (targetPage - startPage).coerceAtLeast(0)
                         coroutineScope.launch {
-                            listState.animateScrollToItem(pageOffset)
+                            if (isMushafMode) {
+                                val pageOffset = (targetPage - startPage).coerceAtLeast(0)
+                                listState.animateScrollToItem(pageOffset)
+                            } else {
+                                val firstAyahOnPage = pageMap.entries.firstOrNull { it.value == targetPage }?.key
+                                val ayahIdx = if (firstAyahOnPage != null) {
+                                    ayahs.indexOfFirst { it.ayahNumber == firstAyahOnPage }
+                                } else -1
+                                if (ayahIdx != -1) {
+                                    listState.animateScrollToItem((ayahIdx + 1).coerceAtMost(ayahs.size))
+                                }
+                            }
                         }
+                    } else if (onNavigateToSurah != null) {
+                        onNavigateToSurah(targetSurah, -1, targetPage)
                     } else {
                         viewModel.loadSurah(targetSurah)
                     }
@@ -1053,7 +1078,7 @@ fun AyahItem(
                         text = "🔍 الآية المحددة من البحث",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF8B6508)
+                        color = if (com.example.ui.theme.ThemeManager.currentThemeMode.isDark) Color(0xFFFFD54F) else Color(0xFF8B6508)
                     )
                 }
             }
@@ -1274,7 +1299,7 @@ fun SurahHeaderBanner(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        val pct = ((downloadProgress.downloadedCount.toFloat() / downloadProgress.totalAyahs) * 100).toInt()
+                        val pct = ((downloadProgress.downloadedCount.toFloat() / downloadProgress.totalAyahs.coerceAtLeast(1)) * 100).toInt()
                         Text(
                             text = "جاري تنزيل الصوتيات بدون إنترنت: $pct% (${downloadProgress.downloadedCount}/${downloadProgress.totalAyahs})",
                             fontSize = 12.sp,
@@ -1712,7 +1737,7 @@ fun AuthenticMushafView(
                         val pagePlayingAyah = if (isPagePlaying) playingAyah?.second else null
 
                         // --- Main Quran Text ---
-                        val annotatedText = remember(pageAyahs, pagePlayingAyah, bookmarkedAyahNumbers, highlightedAyahNumber, textScale) {
+                        val annotatedText = remember(pageAyahs, pagePlayingAyah, bookmarkedAyahNumbers, highlightedAyahNumber, textScale, goldAccentColor) {
                             buildPageAnnotatedString(
                                 pageAyahs = pageAyahs,
                                 playingAyah = playingAyah,

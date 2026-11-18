@@ -1,99 +1,54 @@
-# Sawt AL Quran
+# Sawt AL Quran (صوت القرءان)
 
-**Version: 3.0.0**  
-**Developer: Architect Mohammed Shaheed Al-Ajajibi**
+**Version: 3.40.0**  
+**Developer: Architect Mohammed Shaheed Al-Ajajibi**  
+**Repository:** [moshraheem-sudo/Sawt-Al-Quran-](https://github.com/moshraheem-sudo/Sawt-Al-Quran-)
 
-> **Sawt AL Quran** is a religious Quran application designed to provide a calm, elegant, and simple digital experience for listening to the Holy Quran, reading and following verses, and tracking Quran Khatmah progress. The application is especially useful for maintaining a structured Quran routine during the holy month of Ramadan.
+> **Sawt AL Quran** is a complete Android Quran application built with Jetpack Compose and Material Design 3, providing a calm, reliable, and offline-capable experience for listening to famous reciters, reading the Holy Quran with verse-by-verse highlighting, tracking Khatmah progress with automatic local backup & restore, following a live Hijri calendar, and receiving persistent Ayah reminder notifications.
 
-## About the App
-
-**Sawt AL Quran** brings essential Quran experiences together in one focused application. It allows users to listen to Quran recitations, browse available reciters, read Quranic verses, follow the recitation through visual verse highlighting, and track their progress toward completing the Quran.
-
-The application was designed with a modern Islamic visual identity, combining a dark interface with deep green surfaces and subtle gold accents to create a peaceful and focused reading and listening environment.
+---
 
 ## Key Features
 
-- 🎧 **Listen to the Holy Quran** through a selection of available reciters.
-- 🎙️ **Browse Reciters** and choose a preferred recitation.
-- 📖 **Read the Holy Quran** through a dedicated reading experience.
-- ✨ **Verse Highlighting** to visually follow the verse being recited.
-- 📚 **Quran Khatmah Tracking** to follow progress through the Quran by Juz'.
-- 🌙 **Ramadan-Friendly Experience** designed to support a consistent Quran routine throughout the month.
-- 🔎 **Search and Navigation** for easier access to Quran content.
-- 🕋 **Modern Islamic UI** with a calm dark-green and gold-inspired visual style.
-- 📌 **Simple Arabic Interface** focused on clarity, readability, and ease of navigation.
+- 🎙️ **Famous Reciters & Offline Audio** — Stream recitations from renowned reciters (`mp3quran.net` / `EveryAyah`), download Surahs for offline listening, and control playback seamlessly with a persistent Media3 foreground service & mini-player.
+- 📖 **Quran Reader & Auto-Highlighting** — Read the Holy Quran in Uthmani script with search, bookmarks, adjustable typography, and visual verse highlighting synchronized with playback.
+- 📚 **Quran Khatmah Tracking & Auto Backup** — Track completion across all 30 Juz' with automatic multi-location local backup (`KhatmaBackupManager`) and instant restore across updates or database migrations.
+- 🗓️ **Live Hijri Calendar Card** — Displayed directly on the Home screen and synchronized automatically from [moshraheem-sudo/hijri](https://github.com/moshraheem-sudo/hijri), featuring intensified moon-sighting checks during days 28–30 and the 1st of the Hijri month, plus manual day-offset controls and instant remote refresh in Settings.
+- 🔔 **Reliable Ayah Notifications (Post-Reboot Resilient)** — Customizable hourly reminder frequency (1–20 times/hour) powered by exact `AlarmManager` scheduling, `BOOT_COMPLETED` / `USER_UNLOCKED` / `QUICKBOOT_POWERON` / `TIME_SET` recovery, self-healing `WorkManager` watchdog, and built-in exact-alarm / battery-optimization settings shortcuts.
+- 🎨 **Modern Multi-Theme Islamic UI** — Supports multiple curated Light and Dark themes (Emerald, Night Gold, Warm Parchment, etc.) crafted with Material Design 3.
+- 🔄 **In-App GitHub Release Updater** — Checks GitHub Releases (`Sawt-Al-Quran-`) directly in Settings and supports one-tap APK download and installation.
 
-## Main Screens
-
-### 1. Home — Sawt AL Quran
-
-The home screen provides quick access to Quran content, search, featured verses, and listening experiences in a focused and elegant interface.
-
-![Sawt AL Quran Home](screenshots/01-home.png)
-
-### 2. Reciters
-
-A dedicated reciters screen allows users to browse available Quran reciters and select the voice they prefer for listening.
-
-![Reciters](screenshots/02-reciters.png)
-
-### 3. Quran Khatmah
-
-The Khatmah screen helps users monitor Quran completion progress by displaying the Juz' sequence and the status of each part. This feature is particularly valuable for building a structured reading plan during Ramadan.
-
-![Quran Khatmah](screenshots/03-khatmah.png)
+---
 
 ## Project Information
 
 | Item | Details |
 |---|---|
-| **App Name** | Sawt AL Quran |
-| **Version** | `3.0.0` |
+| **App Name** | Sawt AL Quran (صوت القرءان) |
+| **Version** | `3.40.0` (`versionCode: 34000`) |
 | **Category** | Religious / Quran Application |
 | **Developer** | Architect Mohammed Shaheed Al-Ajajibi |
 | **Primary Language** | Arabic |
-| **Design Direction** | Modern Islamic UI |
-| **Main Purpose** | Quran listening, reading, verse following, and Khatmah tracking |
+| **Tech Stack** | Kotlin, Jetpack Compose, Material 3, Room, WorkManager, Media3, OkHttp/Retrofit |
+| **Hijri Feed** | `https://raw.githubusercontent.com/moshraheem-sudo/hijri/main/hijri.json` |
+| **Releases** | [Latest GitHub Releases](https://github.com/moshraheem-sudo/Sawt-Al-Quran-/releases) |
 
-## Project Goals
+---
 
-The goal of **Sawt AL Quran** is to make interaction with the Holy Quran more accessible through a unified digital experience. Instead of separating listening, reading, and completion tracking, the application brings these activities together in a simple and peaceful interface.
+## Main Screens
 
-A major focus of the application is supporting users in maintaining a daily Quran routine, particularly during **Ramadan**, when many users aim to complete one or more Khatmahs during the holy month.
+- **Home — Sawt AL Quran:** App header, live Hijri Calendar card, last-read shortcut, search, and quick navigation. (`screenshots/01-home.png`)
+- **Reciters:** Browse reciters, styles (Hafs, Warsh, Qalun, etc.), stream online, or download Surahs offline. (`screenshots/02-reciters.png`)
+- **Quran Khatmah:** Track completion across the 30 Juz' with persistent progress backup. (`screenshots/03-khatmah.png`)
 
-## Design Philosophy
+---
 
-The visual language of Sawt AL Quran is intentionally calm and minimal. The interface uses dark surfaces, deep green tones, rounded components, and restrained gold accents to create a respectful Islamic atmosphere without overwhelming the Quran content itself.
-
-The design prioritizes:
-
-- Clarity and readability
-- Minimal visual distraction
-- Fast access to Quran content
-- Comfortable navigation
-- A cohesive Islamic visual identity
-
-## Repository Structure
-
-```text
-quran_voice_v3/
-├── README.md
-├── README_AR.md
-└── screenshots/
-    ├── 01-home.png
-    ├── 02-reciters.png
-    └── 03-khatmah.png
-```
-
-## Screenshots
-
-The `screenshots` directory contains selected application interface previews for documentation and project presentation purposes.
-
-## Developer
+## Developer & Contact
 
 **Architect Mohammed Shaheed Al-Ajajibi**  
-Developer and designer of **Sawt AL Quran — Version 3.0.0**.
+WhatsApp: `+9647831452279`  
+GitHub: [https://github.com/moshraheem-sudo/Sawt-Al-Quran-](https://github.com/moshraheem-sudo/Sawt-Al-Quran-)
 
 ## Copyright
 
-© 2026 Architect Mohammed Shaheed Al-Ajajibi. All rights reserved unless otherwise stated in the project files.
+© 2026 Architect Mohammed Shaheed Al-Ajajibi. All rights reserved.

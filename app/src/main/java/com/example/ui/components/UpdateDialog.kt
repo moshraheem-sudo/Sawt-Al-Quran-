@@ -109,13 +109,14 @@ fun AppUpdateDialog(
                 )
 
                 // Subtitle / Version tag
+                val cleanTag = releaseInfo.tagName.trim().removePrefix("v").removePrefix("V")
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
                 ) {
                     Text(
-                        text = "${releaseInfo.appName} (v${releaseInfo.tagName})",
+                        text = "${releaseInfo.appName} (v$cleanTag)",
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
@@ -156,7 +157,8 @@ fun AppUpdateDialog(
                         Button(
                             onClick = {
                                 downloadJob = coroutineScope.launch {
-                                    val fileName = "${releaseInfo.appName}_v${releaseInfo.tagName}.apk"
+                                    val cleanFileTag = releaseInfo.tagName.trim().removePrefix("v").removePrefix("V")
+                                    val fileName = "${releaseInfo.appName}_v$cleanFileTag.apk"
                                     AppUpdateManager.downloadApkFile(
                                         context = context,
                                         downloadUrl = releaseInfo.downloadUrl,
